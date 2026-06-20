@@ -1,0 +1,14 @@
+packages:
+  - "packages/*"
+
+allowBuilds:
+  "@parcel/watcher": true
+  core-js: false
+  esbuild: true
+  msgpackr-extract: false
+  msw: true
+  sharp: true
+  workerd: true
+
+minimumReleaseAge: 4320
+trustPolicy: no-downgrade
