@@ -1,0 +1,22 @@
+{
+  "name": "@buildsip/cli-auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@better-fetch/fetch": "^1.1.21",
+    "conf": "^15.1.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^25.9.1",
+    "typescript": "5.9.2"
+  }
+}
