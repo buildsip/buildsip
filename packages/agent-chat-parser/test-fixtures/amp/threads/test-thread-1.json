@@ -1,0 +1,92 @@
+{
+  "id": "test-thread-1",
+  "title": "Create a login form component",
+  "created": 1740470400000,
+  "messages": [
+    {
+      "role": "user",
+      "messageId": 1,
+      "content": [
+        { "type": "text", "text": "Create a login form component with email and password fields" }
+      ]
+    },
+    {
+      "role": "assistant",
+      "messageId": 2,
+      "content": [
+        { "type": "text", "text": "I'll create a login form component with email and password fields, including form validation and error handling." },
+        { "type": "tool_use", "text": "Writing src/components/LoginForm.tsx" }
+      ]
+    },
+    {
+      "role": "user",
+      "messageId": 3,
+      "content": [
+        { "type": "text", "text": "Add a 'Remember me' checkbox and a forgot password link" }
+      ]
+    },
+    {
+      "role": "assistant",
+      "messageId": 4,
+      "content": [
+        { "type": "text", "text": "I'll add a 'Remember me' checkbox and a 'Forgot password?' link below the form fields." },
+        { "type": "tool_use", "text": "Updating src/components/LoginForm.tsx" }
+      ]
+    },
+    {
+      "role": "user",
+      "messageId": 5,
+      "content": [
+        { "type": "text", "text": "Now add loading state during form submission" }
+      ]
+    },
+    {
+      "role": "assistant",
+      "messageId": 6,
+      "content": [
+        { "type": "text", "text": "Done! The login form now shows a spinner during submission and disables the button. TODO: add rate limiting for failed attempts. Next step: integrate with the auth API." }
+      ]
+    }
+  ],
+  "usageLedger": {
+    "events": [
+      {
+        "model": "claude-sonnet-4-20250514",
+        "credits": 5,
+        "tokens": { "input": 150, "output": 200 },
+        "operationType": "conversation",
+        "fromMessageId": 1,
+        "toMessageId": 2
+      },
+      {
+        "model": "claude-sonnet-4-20250514",
+        "credits": 3,
+        "tokens": { "input": 0, "output": 15 },
+        "operationType": "title-generation",
+        "fromMessageId": 1,
+        "toMessageId": 1
+      },
+      {
+        "model": "claude-sonnet-4-20250514",
+        "credits": 8,
+        "tokens": { "input": 350, "output": 450 },
+        "operationType": "conversation",
+        "fromMessageId": 3,
+        "toMessageId": 4
+      },
+      {
+        "model": "claude-sonnet-4-20250514",
+        "credits": 6,
+        "tokens": { "input": 500, "output": 300 },
+        "operationType": "conversation",
+        "fromMessageId": 5,
+        "toMessageId": 6
+      }
+    ]
+  },
+  "env": {
+    "initial": {
+      "tags": ["model:claude-sonnet-4-20250514", "org:anthropic"]
+    }
+  }
+}

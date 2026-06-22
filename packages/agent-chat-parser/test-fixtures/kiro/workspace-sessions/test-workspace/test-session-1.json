@@ -1,0 +1,36 @@
+{
+  "sessionId": "test-session-1",
+  "title": "Add dark mode toggle",
+  "workspacePath": "/Users/dev/my-app",
+  "selectedModel": "claude-sonnet-4-20250514",
+  "history": [
+    {
+      "message": {
+        "role": "user",
+        "content": "Add a dark mode toggle to the app header",
+        "id": "msg-1"
+      }
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "I'll add a dark mode toggle component to your app header. This will include a sun/moon icon that switches the theme using CSS custom properties.",
+        "id": "msg-2"
+      }
+    },
+    {
+      "message": {
+        "role": "user",
+        "content": "Make sure it persists the preference in localStorage",
+        "id": "msg-3"
+      }
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "Done! The dark mode preference now persists in localStorage under the key 'theme-preference'. On page load, it checks the stored value before applying the default system preference.",
+        "id": "msg-4"
+      }
+    }
+  ]
+}

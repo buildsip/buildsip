@@ -1,0 +1,461 @@
+/**
+ * Zod schemas for all parser raw data formats and serialized session.
+ * Each schema validates untrusted data from disk (JSONL, JSON, YAML, SQLite).
+ * Schemas use .passthrough() to tolerate extra fields from future tool versions.
+ */
+import { z } from 'zod';
+import { ContentBlockSchema } from './content-blocks';
+import { TOOL_NAMES } from './tool-names';
+
+// ── Claude ──────────────────────────────────────────────────────────────────
+
+export const ClaudeMessageSchema = z
+  .object({
+    type: z.string(),
+    uuid: z.string(),
+    timestamp: z.string(),
+    sessionId: z.string().optional(),
+    cwd: z.string().optional(),
+    gitBranch: z.string().optional(),
+    slug: z.string().optional(),
+    model: z.string().optional(),
+    isCompactSummary: z.boolean().optional(),
+    parentUuid: z.string().optional(),
+    message: z
+      .object({
+        role: z.string().optional(),
+        content: z
+          .union([
+            z.string(),
+            z.array(ContentBlockSchema.or(z.object({ type: z.string(), text: z.string().optional() }).passthrough())),
+          ])
+          .optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
+export type ClaudeMessage = z.infer<typeof ClaudeMessageSchema>;
+
+// ── Codex ───────────────────────────────────────────────────────────────────
+
+/** Codex messages are a discriminated union on the `type` field */
+export const CodexSessionMetaSchema = z
+  .object({
+    timestamp: z.string(),
+    type: z.literal('session_meta'),
+    payload: z
+      .object({
+        id: z.string().optional(),
+        timestamp: z.string().optional(),
+        cwd: z.string().optional(),
+        git: z
+          .object({
+            branch: z.string().optional(),
+            repository_url: z.string().optional(),
+            commit_hash: z.string().optional(),
+            sha: z.string().optional(),
+          })
+          .optional(),
+        source: z.string().optional(),
+        originator: z.string().optional(),
+        cli_version: z.string().optional(),
+        model_provider: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export const CodexEventMsgSchema = z
+  .object({
+    timestamp: z.string(),
+    type: z.literal('event_msg'),
+    payload: z
+      .object({
+        type: z.string().optional(),
+        role: z.string().optional(),
+        message: z.string().optional(),
+        content: z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough()).optional(),
+      })
+      .passthrough()
+      .optional(),
+    message: z.string().optional(),
+  })
+  .passthrough();
+
+export const CodexResponseItemSchema = z
+  .object({
+    timestamp: z.string(),
+    type: z.literal('response_item'),
+    payload: z
+      .object({
+        type: z.string().optional(),
+        role: z.string().optional(),
+        name: z.string().optional(),
+        namespace: z.string().optional(),
+        input: z.string().optional(),
+        content: z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough()).optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export const CodexTurnContextSchema = z
+  .object({
+    timestamp: z.string(),
+    type: z.literal('turn_context'),
+    payload: z
+      .object({
+        model: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export const CodexCompactedSchema = z
+  .object({
+    timestamp: z.string(),
+    type: z.literal('compacted'),
+    payload: z
+      .object({
+        message: z.string().optional(),
+        replacement_history: z.unknown().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export const CodexMessageSchema = z.discriminatedUnion('type', [
+  CodexSessionMetaSchema,
+  CodexEventMsgSchema,
+  CodexResponseItemSchema,
+  CodexTurnContextSchema,
+  CodexCompactedSchema,
+]);
+
+export type CodexSessionMeta = z.infer<typeof CodexSessionMetaSchema>;
+export type CodexEventMsg = z.infer<typeof CodexEventMsgSchema>;
+export type CodexResponseItem = z.infer<typeof CodexResponseItemSchema>;
+export type CodexTurnContext = z.infer<typeof CodexTurnContextSchema>;
+export type CodexCompacted = z.infer<typeof CodexCompactedSchema>;
+export type CodexMessage = z.infer<typeof CodexMessageSchema>;
+
+// ── Copilot ─────────────────────────────────────────────────────────────────
+
+export const CopilotWorkspaceSchema = z
+  .object({
+    id: z.string(),
+    cwd: z.string(),
+    git_root: z.string().optional(),
+    repository: z.string().optional(),
+    branch: z.string().optional(),
+    summary: z.string().optional(),
+    summary_count: z.number().optional(),
+    created_at: z.string(),
+    updated_at: z.string(),
+  })
+  .passthrough();
+
+export const CopilotEventSchema = z
+  .object({
+    type: z.string(),
+    id: z.string(),
+    timestamp: z.string(),
+    parentId: z.union([z.string(), z.null()]).optional(),
+    data: z
+      .object({
+        sessionId: z.string().optional(),
+        selectedModel: z.string().optional(),
+        currentModel: z.string().optional(),
+        content: z.string().optional(),
+        transformedContent: z.string().optional(),
+        messageId: z.string().optional(),
+        context: z
+          .object({
+            cwd: z.string().optional(),
+            gitRoot: z.string().optional(),
+            branch: z.string().optional(),
+            repository: z.string().optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export type CopilotWorkspace = z.infer<typeof CopilotWorkspaceSchema>;
+export type CopilotEvent = z.infer<typeof CopilotEventSchema>;
+
+// ── Gemini ──────────────────────────────────────────────────────────────────
+
+export const GeminiMessageSchema = z
+  .object({
+    id: z.string(),
+    timestamp: z.string(),
+    type: z.string(),
+    content: z.union([
+      z.string(),
+      z.array(z.object({ text: z.string().optional(), type: z.string().optional() }).passthrough()),
+    ]),
+    model: z.string().optional(),
+  })
+  .passthrough();
+
+export const GeminiSessionSchema = z
+  .object({
+    sessionId: z.string(),
+    projectHash: z.string(),
+    startTime: z.string(),
+    lastUpdated: z.string(),
+    messages: z.array(GeminiMessageSchema),
+  })
+  .passthrough();
+
+export type GeminiMessage = z.infer<typeof GeminiMessageSchema>;
+export type GeminiSession = z.infer<typeof GeminiSessionSchema>;
+
+// ── OpenCode ────────────────────────────────────────────────────────────────
+
+export const OpenCodeSessionSchema = z
+  .object({
+    id: z.string(),
+    slug: z.string().optional(),
+    version: z.string().optional(),
+    projectID: z.string(),
+    directory: z.string(),
+    title: z.string().optional(),
+    time: z.object({
+      created: z.number(),
+      updated: z.number(),
+    }),
+  })
+  .passthrough();
+
+export const OpenCodeProjectSchema = z
+  .object({
+    id: z.string(),
+    worktree: z.string(),
+    vcs: z.string().optional(),
+    time: z
+      .object({
+        created: z.number(),
+        updated: z.number(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
+export const OpenCodeMessageSchema = z
+  .object({
+    id: z.string(),
+    sessionID: z.string(),
+    role: z.enum(['user', 'assistant']),
+    time: z.object({
+      created: z.number(),
+      completed: z.number().optional(),
+    }),
+    path: z.object({ cwd: z.string().optional(), root: z.string().optional() }).optional(),
+  })
+  .passthrough();
+
+export const OpenCodePartSchema = z
+  .object({
+    id: z.string(),
+    sessionID: z.string(),
+    messageID: z.string(),
+    type: z.string(),
+    text: z.string().optional(),
+  })
+  .passthrough();
+
+// SQLite row schemas
+export const SqliteSessionRowSchema = z.object({
+  id: z.string(),
+  project_id: z.string(),
+  slug: z.string(),
+  directory: z.string(),
+  title: z.string(),
+  version: z.string(),
+  time_created: z.number(),
+  time_updated: z.number(),
+});
+
+export const SqliteMessageRowSchema = z.object({
+  id: z.string(),
+  session_id: z.string(),
+  time_created: z.number(),
+  data: z.string(),
+});
+
+export const SqlitePartRowSchema = z.object({
+  id: z.string(),
+  message_id: z.string(),
+  session_id: z.string(),
+  time_created: z.number(),
+  data: z.string(),
+});
+
+export const SqliteProjectRowSchema = z.object({
+  id: z.string(),
+  worktree: z.string(),
+});
+
+export type OpenCodeSession = z.infer<typeof OpenCodeSessionSchema>;
+export type OpenCodeProject = z.infer<typeof OpenCodeProjectSchema>;
+export type OpenCodeMessage = z.infer<typeof OpenCodeMessageSchema>;
+export type OpenCodePart = z.infer<typeof OpenCodePartSchema>;
+export type SqliteSessionRow = z.infer<typeof SqliteSessionRowSchema>;
+export type SqliteMessageRow = z.infer<typeof SqliteMessageRowSchema>;
+export type SqlitePartRow = z.infer<typeof SqlitePartRowSchema>;
+export type SqliteProjectRow = z.infer<typeof SqliteProjectRowSchema>;
+
+// ── Droid ───────────────────────────────────────────────────────────────────
+
+export const DroidSessionStartSchema = z
+  .object({
+    type: z.literal('session_start'),
+    id: z.string(),
+    title: z.string(),
+    sessionTitle: z.string(),
+    owner: z.string().optional(),
+    version: z.number().optional(),
+    cwd: z.string(),
+    isSessionTitleManuallySet: z.boolean().optional(),
+    sessionTitleAutoStage: z.string().optional(),
+  })
+  .passthrough();
+
+export const DroidMessageEventSchema = z
+  .object({
+    type: z.literal('message'),
+    id: z.string(),
+    timestamp: z.string(),
+    parentId: z.string().optional(),
+    message: z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.array(
+        ContentBlockSchema.or(z.object({ type: z.string(), text: z.string().optional() }).passthrough()),
+      ),
+    }),
+  })
+  .passthrough();
+
+export const DroidEventSchema = z.discriminatedUnion('type', [DroidSessionStartSchema, DroidMessageEventSchema]);
+
+export const DroidSettingsSchema = z
+  .object({
+    assistantActiveTimeMs: z.number().optional(),
+    model: z.string().optional(),
+    interactionMode: z.string().optional(),
+    autonomyMode: z.string().optional(),
+    providerLock: z.string().optional(),
+    providerLockTimestamp: z.string().optional(),
+    apiProviderLock: z.string().optional(),
+  })
+  .passthrough();
+
+export type DroidSessionStart = z.infer<typeof DroidSessionStartSchema>;
+export type DroidMessageEvent = z.infer<typeof DroidMessageEventSchema>;
+export type DroidEvent = z.infer<typeof DroidEventSchema>;
+export type DroidSettings = z.infer<typeof DroidSettingsSchema>;
+
+// ── Kimi ────────────────────────────────────────────────────────────────────
+
+export const KimiMetadataSchema = z
+  .object({
+    session_id: z.string(),
+    title: z.string().optional(),
+    title_generated: z.boolean().optional(),
+    archived: z.boolean().optional(),
+    archived_at: z.union([z.number(), z.string(), z.null()]).optional(),
+    wire_mtime: z.number().nullable().optional(),
+  })
+  .passthrough();
+
+export const KimiMessageSchema = z
+  .object({
+    role: z.string(),
+    content: z
+      .union([z.string(), z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough())])
+      .optional(),
+    id: z.number().optional(),
+  })
+  .passthrough();
+
+export type KimiMetadata = z.infer<typeof KimiMetadataSchema>;
+export type KimiMessage = z.infer<typeof KimiMessageSchema>;
+
+// ── Cursor ──────────────────────────────────────────────────────────────────
+
+export const CursorTranscriptLineSchema = z
+  .object({
+    role: z.enum(['user', 'assistant']),
+    message: z.object({
+      content: z.array(
+        ContentBlockSchema.or(z.object({ type: z.string(), text: z.string().optional() }).passthrough()),
+      ),
+    }),
+  })
+  .passthrough();
+
+export type CursorTranscriptLine = z.infer<typeof CursorTranscriptLineSchema>;
+
+// ── Qwen Code ──────────────────────────────────────────────────────────────
+
+export const QwenPartSchema = z
+  .object({
+    text: z.string().optional(),
+    thought: z.boolean().optional(),
+  })
+  .passthrough();
+
+export type QwenPart = z.infer<typeof QwenPartSchema>;
+
+export const QwenContentSchema = z
+  .object({
+    role: z.string().optional(),
+    parts: z.array(QwenPartSchema).optional(),
+  })
+  .passthrough();
+
+export type QwenContent = z.infer<typeof QwenContentSchema>;
+
+export const QwenChatRecordSchema = z
+  .object({
+    uuid: z.string(),
+    parentUuid: z.union([z.string(), z.null()]),
+    sessionId: z.string(),
+    timestamp: z.string(),
+    type: z.enum(['user', 'assistant', 'system']),
+    subtype: z.string().optional(),
+    cwd: z.string(),
+    version: z.string().optional(),
+    gitBranch: z.string().optional(),
+    message: QwenContentSchema.optional(),
+    model: z.string().optional(),
+    systemPayload: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+export type QwenChatRecord = z.infer<typeof QwenChatRecordSchema>;
+
+// ── Serialized Session (Index JSONL) ────────────────────────────────────────
+
+export const SerializedSessionSchema = z.object({
+  id: z.string(),
+  source: z.enum(TOOL_NAMES),
+  cwd: z.string(),
+  repo: z.string().optional(),
+  branch: z.string().optional(),
+  gitSha: z.string().optional(),
+  createdAt: z.string().transform((s) => new Date(s)),
+  updatedAt: z.string().transform((s) => new Date(s)),
+  originalPath: z.string(),
+  model: z.string().optional(),
+});
