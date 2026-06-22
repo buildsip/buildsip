@@ -9,11 +9,22 @@ This package discovers native session records from supported tools and parses th
 ```ts
 import { listSessions, parseSession } from '@buildsip/agent-chat-parser';
 
-const sessions = await listSessions({ source: 'codex', cwd: '/repo', limit: 10 });
-const conversation = await parseSession(sessions[0]);
+const ctx = {
+  log: {
+    debug(...messages: unknown[]) {
+      console.debug(...messages);
+    },
+    warn(...messages: unknown[]) {
+      console.warn(...messages);
+    },
+  },
+};
+
+const sessions = await listSessions(ctx, { source: 'codex', cwd: '/repo', limit: 10 });
+const conversation = await parseSession(ctx, sessions[0]);
 ```
 
-`listSessions(options?)` scans supported tool storage read-only and returns `UnifiedSession[]`.
+`listSessions(ctx, options?)` scans supported tool storage read-only and returns `UnifiedSession[]`.
 
 Options:
 
@@ -21,7 +32,7 @@ Options:
 - `cwd`: restrict discovery to sessions for a working directory when the parser can resolve it.
 - `limit`: cap returned sessions after newest-first sorting.
 
-`parseSession(session)` returns:
+`parseSession(ctx, session)` returns:
 
 ```ts
 {

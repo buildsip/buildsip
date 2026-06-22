@@ -1,8 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as readline from 'node:readline';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
 import type { GeminiMessage, GeminiSession } from '../types/schemas';
 import { GeminiMessageSchema, GeminiSessionSchema } from '../types/schemas';
 import { extractTextFromBlocks } from '../utils/content';
@@ -27,17 +26,17 @@ type GeminiJsonlRecord = Partial<GeminiSessionData> & {
 /**
  * Find all Gemini session files (new and legacy storage formats)
  */
-async function findSessionFiles(): Promise<string[]> {
+async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> {
   const results: string[] = [];
 
   // Current format: ~/.gemini/tmp/<project-hash>/chats/*.jsonl
   // Legacy chats path: ~/.gemini/tmp/<project-hash>/chats/session-*.json
   if (fs.existsSync(GEMINI_BASE_DIR)) {
-    for (const projectDir of listSubdirectories(GEMINI_BASE_DIR)) {
+    for (const projectDir of listSubdirectories(ctx, GEMINI_BASE_DIR)) {
       if (path.basename(projectDir) === 'bin') continue;
       const chatsDir = path.join(projectDir, 'chats');
       results.push(
-        ...findFiles(chatsDir, {
+        ...findFiles(ctx, chatsDir, {
           match: (entry) =>
             entry.name.endsWith('.jsonl') || (entry.name.startsWith('session-') && entry.name.endsWith('.json')),
           recursive: false,
@@ -49,7 +48,7 @@ async function findSessionFiles(): Promise<string[]> {
   // Legacy format: ~/.gemini/sessions/*.json
   if (fs.existsSync(GEMINI_LEGACY_DIR)) {
     results.push(
-      ...findFiles(GEMINI_LEGACY_DIR, {
+      ...findFiles(ctx, GEMINI_LEGACY_DIR, {
         match: (entry) => entry.name.endsWith('.json'),
         recursive: false,
       }),
@@ -59,22 +58,22 @@ async function findSessionFiles(): Promise<string[]> {
   return results;
 }
 
-async function loadProjectDirectoryMap(): Promise<Map<string, string>> {
+async function loadProjectDirectoryMap(ctx: AgentChatParserContext): Promise<Map<string, string>> {
   try {
     const content = await fs.promises.readFile(GEMINI_PROJECTS_PATH, 'utf8');
     const parsed = JSON.parse(content) as { projects?: Record<string, string> };
     const entries = Object.entries(parsed.projects ?? {});
     return new Map(entries.map(([cwd, projectId]) => [projectId, cwd]));
   } catch (err) {
-    logger.debug('gemini: failed to load projects.json mapping', GEMINI_PROJECTS_PATH, err);
+    ctx.log.debug('gemini: failed to load projects.json mapping', GEMINI_PROJECTS_PATH, err);
     return new Map();
   }
 }
 
-function toGeminiMessage(record: GeminiJsonlRecord): GeminiMessage | null {
+function toGeminiMessage(ctx: AgentChatParserContext, record: GeminiJsonlRecord): GeminiMessage | null {
   const result = GeminiMessageSchema.safeParse(record);
   if (result.success) return result.data;
-  logger.debug('gemini: message validation failed', result.error.message);
+  ctx.log.debug('gemini: message validation failed', result.error.message);
   return null;
 }
 
@@ -94,7 +93,10 @@ function findRewindIndex(messages: GeminiMessage[], messageId: string): number {
   return -1;
 }
 
-async function parseJsonlSessionFile(filePath: string): Promise<GeminiSessionData | null> {
+async function parseJsonlSessionFile(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<GeminiSessionData | null> {
   const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
   const rl = readline.createInterface({ input: stream, crlfDelay: Number.POSITIVE_INFINITY });
   const sessionState: Partial<GeminiSessionData> = {};
@@ -110,7 +112,7 @@ async function parseJsonlSessionFile(filePath: string): Promise<GeminiSessionDat
       try {
         record = JSON.parse(line) as GeminiJsonlRecord;
       } catch (err) {
-        logger.debug('gemini: skipping malformed JSONL record', filePath, err);
+        ctx.log.debug('gemini: skipping malformed JSONL record', filePath, err);
         continue;
       }
 
@@ -132,7 +134,7 @@ async function parseJsonlSessionFile(filePath: string): Promise<GeminiSessionDat
         continue;
       }
 
-      const message = toGeminiMessage(record);
+      const message = toGeminiMessage(ctx, record);
       if (message) {
         if (message.id) {
           const existingIndex = messageIndexById.get(message.id);
@@ -164,7 +166,7 @@ async function parseJsonlSessionFile(filePath: string): Promise<GeminiSessionDat
   });
 
   if (!parsed.success) {
-    logger.debug('gemini: JSONL session validation failed', filePath, parsed.error.message);
+    ctx.log.debug('gemini: JSONL session validation failed', filePath, parsed.error.message);
     return null;
   }
 
@@ -184,19 +186,22 @@ async function parseJsonlSessionFile(filePath: string): Promise<GeminiSessionDat
 /**
  * Parse a single Gemini session file
  */
-async function parseSessionFile(filePath: string): Promise<GeminiSessionData | null> {
+async function parseSessionFile(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<GeminiSessionData | null> {
   try {
     if (filePath.endsWith('.jsonl')) {
-      return await parseJsonlSessionFile(filePath);
+      return await parseJsonlSessionFile(ctx, filePath);
     }
 
     const content = await fs.promises.readFile(filePath, 'utf8');
     const result = GeminiSessionSchema.safeParse(JSON.parse(content));
     if (result.success) return result.data;
-    logger.debug('gemini: session validation failed', filePath, result.error.message);
+    ctx.log.debug('gemini: session validation failed', filePath, result.error.message);
     return null;
   } catch (err) {
-    logger.debug('gemini: failed to parse session file', filePath, err);
+    ctx.log.debug('gemini: failed to parse session file', filePath, err);
     return null;
   }
 }
@@ -223,14 +228,14 @@ function extractFirstUserMessage(session: GeminiSession): string {
 /**
  * Parse all Gemini sessions
  */
-export async function parseGeminiSessions(): Promise<UnifiedSession[]> {
-  const files = await findSessionFiles();
-  const projectDirectories = await loadProjectDirectoryMap();
+export async function parseGeminiSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+  const files = await findSessionFiles(ctx);
+  const projectDirectories = await loadProjectDirectoryMap(ctx);
   const sessions: UnifiedSession[] = [];
 
   for (const filePath of files) {
     try {
-      const session = await parseSessionFile(filePath);
+      const session = await parseSessionFile(ctx, filePath);
       if (!session || !session.sessionId) continue;
 
       const firstUserMessage = extractFirstUserMessage(session);
@@ -248,7 +253,7 @@ export async function parseGeminiSessions(): Promise<UnifiedSession[]> {
         originalPath: filePath,
       });
     } catch (err) {
-      logger.debug('gemini: skipping unparseable session', filePath, err);
+      ctx.log.debug('gemini: skipping unparseable session', filePath, err);
       // Skip files we can't parse
     }
   }
@@ -260,8 +265,11 @@ export async function parseGeminiSessions(): Promise<UnifiedSession[]> {
 /**
  * Extract visible messages from a Gemini session.
  */
-export async function extractGeminiContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const sessionData = await parseSessionFile(session.originalPath);
+export async function extractGeminiContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const sessionData = await parseSessionFile(ctx, session.originalPath);
   const messages: MessageDraft[] = [];
   let model = session.model;
 

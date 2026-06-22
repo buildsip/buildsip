@@ -5,8 +5,7 @@ import * as https from 'node:https';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import * as readline from 'node:readline';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, SessionSource, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, SessionSource, UnifiedSession } from '../types/index';
 import {
   cleanSummary,
   extractRepoFromCwd,
@@ -31,11 +30,11 @@ function envOverrideMs(name: string, fallback: number): number {
 }
 
 function getLaunchPollIntervalMs(): number {
-  return envOverrideMs('CONTINUES_LAUNCH_POLL_INTERVAL_MS', LAUNCH_POLL_INTERVAL_MS_DEFAULT);
+  return envOverrideMs('BUILDSIP_LAUNCH_POLL_INTERVAL_MS', LAUNCH_POLL_INTERVAL_MS_DEFAULT);
 }
 
 function getLaunchTimeoutMs(): number {
-  return envOverrideMs('CONTINUES_LAUNCH_TIMEOUT_MS', LAUNCH_TIMEOUT_MS_DEFAULT);
+  return envOverrideMs('BUILDSIP_LAUNCH_TIMEOUT_MS', LAUNCH_TIMEOUT_MS_DEFAULT);
 }
 
 interface SqlitePreparedStatement {
@@ -162,20 +161,20 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
-async function readDirSafe(dirPath: string): Promise<fs.Dirent[]> {
+async function readDirSafe(ctx: AgentChatParserContext, dirPath: string): Promise<fs.Dirent[]> {
   try {
     return await fsp.readdir(dirPath, { withFileTypes: true });
   } catch (err) {
-    logger.debug('antigravity: failed to read directory', dirPath, err);
+    ctx.log.debug('antigravity: failed to read directory', dirPath, err);
     return [];
   }
 }
 
-async function statSafe(filePath: string): Promise<fs.Stats | undefined> {
+async function statSafe(ctx: AgentChatParserContext, filePath: string): Promise<fs.Stats | undefined> {
   try {
     return await fsp.stat(filePath);
   } catch (err) {
-    logger.debug('antigravity: failed to stat path', filePath, err);
+    ctx.log.debug('antigravity: failed to stat path', filePath, err);
     return undefined;
   }
 }
@@ -252,17 +251,24 @@ function addRecord(records: Map<string, AntigravityRecord>, id: string, patch: P
   records.set(id, { ...existing, ...patch, id });
 }
 
-async function discoverConversationRecords(records: Map<string, AntigravityRecord>): Promise<void> {
+async function discoverConversationRecords(
+  ctx: AgentChatParserContext,
+  records: Map<string, AntigravityRecord>,
+): Promise<void> {
   const conversationsDir = getConversationsDir();
-  for (const entry of await readDirSafe(conversationsDir)) {
+  for (const entry of await readDirSafe(ctx, conversationsDir)) {
     if (!entry.isFile() || !entry.name.endsWith('.pb')) continue;
     const id = path.basename(entry.name, '.pb');
     addRecord(records, id, { conversationPath: path.join(conversationsDir, entry.name) });
   }
 }
 
-async function findBrainArtifactPath(brainDir: string, baseName: string): Promise<string | undefined> {
-  const entries = await readDirSafe(brainDir);
+async function findBrainArtifactPath(
+  ctx: AgentChatParserContext,
+  brainDir: string,
+  baseName: string,
+): Promise<string | undefined> {
+  const entries = await readDirSafe(ctx, brainDir);
   const exact = entries.find((entry) => entry.isFile() && entry.name === baseName);
   if (exact) return path.join(brainDir, exact.name);
 
@@ -272,26 +278,29 @@ async function findBrainArtifactPath(brainDir: string, baseName: string): Promis
   if (candidates.length === 0) return undefined;
 
   const withStats = await Promise.all(
-    candidates.map(async (candidate) => ({ candidate, stats: await statSafe(candidate) })),
+    candidates.map(async (candidate) => ({ candidate, stats: await statSafe(ctx, candidate) })),
   );
   return withStats
     .filter((item): item is { candidate: string; stats: fs.Stats } => item.stats !== undefined)
     .sort((left, right) => right.stats.mtimeMs - left.stats.mtimeMs)[0]?.candidate;
 }
 
-async function hasBrainArtifacts(dirPath: string): Promise<boolean> {
+async function hasBrainArtifacts(ctx: AgentChatParserContext, dirPath: string): Promise<boolean> {
   for (const fileName of BRAIN_ARTIFACT_BASE_FILES) {
-    if (await findBrainArtifactPath(dirPath, fileName)) return true;
+    if (await findBrainArtifactPath(ctx, dirPath, fileName)) return true;
   }
   return false;
 }
 
-async function discoverBrainRecords(records: Map<string, AntigravityRecord>): Promise<void> {
+async function discoverBrainRecords(
+  ctx: AgentChatParserContext,
+  records: Map<string, AntigravityRecord>,
+): Promise<void> {
   const brainDir = getBrainDir();
-  for (const entry of await readDirSafe(brainDir)) {
+  for (const entry of await readDirSafe(ctx, brainDir)) {
     if (!entry.isDirectory()) continue;
     const dirPath = path.join(brainDir, entry.name);
-    if (!UUIDISH_RE.test(entry.name) && !(await hasBrainArtifacts(dirPath))) continue;
+    if (!UUIDISH_RE.test(entry.name) && !(await hasBrainArtifacts(ctx, dirPath))) continue;
     addRecord(records, entry.name, { brainDir: dirPath });
   }
 }
@@ -323,7 +332,7 @@ function parseLegacyLine(line: string): AntigravityEntry | null {
   return null;
 }
 
-async function parseLegacySessionFile(filePath: string): Promise<AntigravityEntry[]> {
+async function parseLegacySessionFile(ctx: AgentChatParserContext, filePath: string): Promise<AntigravityEntry[]> {
   try {
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({
@@ -337,19 +346,19 @@ async function parseLegacySessionFile(filePath: string): Promise<AntigravityEntr
     }
     return entries;
   } catch (err) {
-    logger.debug('antigravity: failed to read legacy session file', filePath, err);
+    ctx.log.debug('antigravity: failed to read legacy session file', filePath, err);
     return [];
   }
 }
 
-async function findLegacySessionFiles(): Promise<string[]> {
+async function findLegacySessionFiles(ctx: AgentChatParserContext): Promise<string[]> {
   const codeTrackerDir = getCodeTrackerDir();
   const pendingDirs = [codeTrackerDir];
   const files: string[] = [];
 
   while (pendingDirs.length > 0) {
     const dirPath = pendingDirs.pop()!;
-    for (const entry of await readDirSafe(dirPath)) {
+    for (const entry of await readDirSafe(ctx, dirPath)) {
       const entryPath = path.join(dirPath, entry.name);
       if (entry.isDirectory()) {
         pendingDirs.push(entryPath);
@@ -362,10 +371,13 @@ async function findLegacySessionFiles(): Promise<string[]> {
   return files;
 }
 
-async function discoverLegacyRecords(records: Map<string, AntigravityRecord>): Promise<void> {
+async function discoverLegacyRecords(
+  ctx: AgentChatParserContext,
+  records: Map<string, AntigravityRecord>,
+): Promise<void> {
   const codeTrackerDir = getCodeTrackerDir();
-  for (const filePath of await findLegacySessionFiles()) {
-    const entries = await parseLegacySessionFile(filePath);
+  for (const filePath of await findLegacySessionFiles(ctx)) {
+    const entries = await parseLegacySessionFile(ctx, filePath);
     if (!entries.some((entry) => entry.type === 'user' || entry.type === 'assistant')) continue;
     const ext = path.extname(filePath);
     // Use the code_tracker-relative path (separators → ':') so two legacy
@@ -380,7 +392,7 @@ async function discoverLegacyRecords(records: Map<string, AntigravityRecord>): P
   }
 }
 
-function openDb(dbPath: string): { db: SqliteDatabase; close: () => void } | null {
+function openDb(ctx: AgentChatParserContext, dbPath: string): { db: SqliteDatabase; close: () => void } | null {
   try {
     const require = createRequire(import.meta.url);
     const sqliteModule = require('node:sqlite') as {
@@ -389,13 +401,13 @@ function openDb(dbPath: string): { db: SqliteDatabase; close: () => void } | nul
     const db = new sqliteModule.DatabaseSync(dbPath, { open: true, readOnly: true });
     return { db, close: () => db.close() };
   } catch (err) {
-    logger.debug('antigravity: failed to open state database', dbPath, err);
+    ctx.log.debug('antigravity: failed to open state database', dbPath, err);
     return null;
   }
 }
 
-function readStateValue(dbPath: string, key: string): string | undefined {
-  const handle = openDb(dbPath);
+function readStateValue(ctx: AgentChatParserContext, dbPath: string, key: string): string | undefined {
+  const handle = openDb(ctx, dbPath);
   if (!handle) return undefined;
 
   try {
@@ -406,7 +418,7 @@ function readStateValue(dbPath: string, key: string): string | undefined {
     if (value instanceof Uint8Array) return Buffer.from(value).toString('utf8');
     return value == null ? undefined : String(value);
   } catch (err) {
-    logger.debug('antigravity: failed to read state key', key, err);
+    ctx.log.debug('antigravity: failed to read state key', key, err);
     return undefined;
   } finally {
     handle.close();
@@ -719,13 +731,13 @@ function parseStateSummaryMap(value: string): Map<string, StateSummary> {
   return summaries;
 }
 
-function loadStateSummaries(): Map<string, StateSummary> {
+function loadStateSummaries(ctx: AgentChatParserContext): Map<string, StateSummary> {
   const combined = new Map<string, StateSummary>();
 
   for (const dbPath of getStateDbPaths()) {
     if (!fs.existsSync(dbPath)) continue;
     for (const key of SUMMARY_STATE_KEYS) {
-      const value = readStateValue(dbPath, key);
+      const value = readStateValue(ctx, dbPath, key);
       if (!value) continue;
       for (const [id, summary] of parseStateSummaryMap(value)) {
         combined.set(id, summary);
@@ -737,8 +749,11 @@ function loadStateSummaries(): Map<string, StateSummary> {
   return combined;
 }
 
-async function discoverStateRecords(records: Map<string, AntigravityRecord>): Promise<void> {
-  for (const [id, state] of loadStateSummaries()) {
+async function discoverStateRecords(
+  ctx: AgentChatParserContext,
+  records: Map<string, AntigravityRecord>,
+): Promise<void> {
+  for (const [id, state] of loadStateSummaries(ctx)) {
     addRecord(records, id, { state });
   }
 }
@@ -848,7 +863,7 @@ function runExecFile(
   });
 }
 
-async function getProcessRecords(): Promise<ProcessRecord[]> {
+async function getProcessRecords(ctx: AgentChatParserContext): Promise<ProcessRecord[]> {
   try {
     const command =
       process.platform === 'win32'
@@ -879,12 +894,12 @@ async function getProcessRecords(): Promise<ProcessRecord[]> {
       return match ? [{ pid: match[1]!, commandLine: match[2]!.trim() }] : [];
     });
   } catch (err) {
-    logger.debug('antigravity: failed to inspect running language server', err);
+    ctx.log.debug('antigravity: failed to inspect running language server', err);
     return [];
   }
 }
 
-async function getListeningPorts(pid: string | undefined): Promise<number[]> {
+async function getListeningPorts(ctx: AgentChatParserContext, pid: string | undefined): Promise<number[]> {
   if (!pid || process.platform === 'win32') return [];
 
   try {
@@ -903,28 +918,35 @@ async function getListeningPorts(pid: string | undefined): Promise<number[]> {
       })
       .sort((left, right) => left - right);
   } catch (err) {
-    logger.debug('antigravity: failed to inspect language server ports', err);
+    ctx.log.debug('antigravity: failed to inspect language server ports', err);
     return [];
   }
 }
 
-async function findRpcConnection(): Promise<RpcConnection | null> {
+async function findRpcConnection(ctx: AgentChatParserContext): Promise<RpcConnection | null> {
   if (process.env.ANTIGRAVITY_DISABLE_RPC === '1') return null;
 
   // Filter by the cheap command-line predicate first so we only spawn
   // `lsof` for genuine Antigravity language-server candidates. Without this,
   // normal indexing on machines where Antigravity is not running would
   // shell out once per process listed by `ps` (hundreds of invocations).
-  const candidates = (await getProcessRecords()).filter((record) => isAntigravityLanguageServer(record.commandLine));
+  const candidates = (await getProcessRecords(ctx)).filter((record) =>
+    isAntigravityLanguageServer(record.commandLine),
+  );
   for (const processRecord of candidates) {
-    const listeningPorts = await getListeningPorts(processRecord.pid);
+    const listeningPorts = await getListeningPorts(ctx, processRecord.pid);
     const connection = parseRpcConnectionFromCommand(processRecord.commandLine, listeningPorts);
     if (connection) return connection;
   }
   return null;
 }
 
-function callRpc(connection: RpcConnection, method: string, payload: Record<string, unknown>): Promise<unknown | null> {
+function callRpc(
+  ctx: AgentChatParserContext,
+  connection: RpcConnection,
+  method: string,
+  payload: Record<string, unknown>,
+): Promise<unknown | null> {
   const body = JSON.stringify(payload);
 
   return new Promise((resolve) => {
@@ -952,7 +974,7 @@ function callRpc(connection: RpcConnection, method: string, payload: Record<stri
           receivedBytes += chunk.length;
           if (receivedBytes > MAX_RPC_RESPONSE_BYTES) {
             aborted = true;
-            logger.debug('antigravity: RPC response exceeded cap', method, receivedBytes);
+            ctx.log.debug('antigravity: RPC response exceeded cap', method, receivedBytes);
             req.destroy();
             resolve(null);
             return;
@@ -965,7 +987,7 @@ function callRpc(connection: RpcConnection, method: string, payload: Record<stri
             const text = Buffer.concat(chunks).toString('utf8');
             resolve(text ? JSON.parse(text) : null);
           } catch (err) {
-            logger.debug('antigravity: failed to parse RPC response', method, err);
+            ctx.log.debug('antigravity: failed to parse RPC response', method, err);
             resolve(null);
           }
         });
@@ -973,7 +995,7 @@ function callRpc(connection: RpcConnection, method: string, payload: Record<stri
     );
 
     req.on('error', (err) => {
-      logger.debug('antigravity: RPC request failed', method, err);
+      ctx.log.debug('antigravity: RPC request failed', method, err);
       resolve(null);
     });
     req.on('timeout', () => {
@@ -984,10 +1006,13 @@ function callRpc(connection: RpcConnection, method: string, payload: Record<stri
   });
 }
 
-async function discoverLiveRecords(records: Map<string, AntigravityRecord>): Promise<void> {
-  const connection = await findRpcConnection();
+async function discoverLiveRecords(
+  ctx: AgentChatParserContext,
+  records: Map<string, AntigravityRecord>,
+): Promise<void> {
+  const connection = await findRpcConnection(ctx);
   if (!connection) return;
-  const response = await callRpc(connection, 'GetAllCascadeTrajectories', {});
+  const response = await callRpc(ctx, connection, 'GetAllCascadeTrajectories', {});
   for (const [id, live] of parseLiveSummaryResponse(response)) {
     addRecord(records, id, { live });
   }
@@ -1000,12 +1025,12 @@ function normalizeModelName(model: string): string {
     .toLowerCase();
 }
 
-async function readArtifact(filePath: string): Promise<string | undefined> {
+async function readArtifact(ctx: AgentChatParserContext, filePath: string): Promise<string | undefined> {
   try {
     const text = await fsp.readFile(filePath, 'utf8');
     return text.trim();
   } catch (err) {
-    logger.debug('antigravity: failed to read artifact', filePath, err);
+    ctx.log.debug('antigravity: failed to read artifact', filePath, err);
     return undefined;
   }
 }
@@ -1018,12 +1043,15 @@ function firstMarkdownHeading(markdown: string): string | undefined {
   return undefined;
 }
 
-async function inferCwdFromBrain(brainDir: string | undefined): Promise<string | undefined> {
+async function inferCwdFromBrain(
+  ctx: AgentChatParserContext,
+  brainDir: string | undefined,
+): Promise<string | undefined> {
   if (!brainDir) return undefined;
   for (const artifact of BRAIN_ARTIFACT_BASE_FILES) {
-    const artifactPath = await findBrainArtifactPath(brainDir, artifact);
+    const artifactPath = await findBrainArtifactPath(ctx, brainDir, artifact);
     if (!artifactPath) continue;
-    const text = await readArtifact(artifactPath);
+    const text = await readArtifact(ctx, artifactPath);
     if (!text) continue;
     const fileUri = text.match(/file:\/\/[^\s)\]'"`]+/u)?.[0];
     const cwd = fileUri ? decodeFileUri(fileUri) : undefined;
@@ -1032,13 +1060,16 @@ async function inferCwdFromBrain(brainDir: string | undefined): Promise<string |
   return undefined;
 }
 
-async function pathStats(paths: string[]): Promise<{ bytes: number; createdAt?: Date; updatedAt?: Date }> {
+async function pathStats(
+  ctx: AgentChatParserContext,
+  paths: string[],
+): Promise<{ bytes: number; createdAt?: Date; updatedAt?: Date }> {
   let bytes = 0;
   const createdTimes: number[] = [];
   const updatedTimes: number[] = [];
 
   for (const filePath of paths) {
-    const stats = await statSafe(filePath);
+    const stats = await statSafe(ctx, filePath);
     if (!stats) continue;
     bytes += stats.size;
     createdTimes.push(stats.birthtimeMs || stats.ctimeMs || stats.mtimeMs);
@@ -1052,27 +1083,30 @@ async function pathStats(paths: string[]): Promise<{ bytes: number; createdAt?: 
   };
 }
 
-async function brainArtifactPaths(brainDir: string | undefined): Promise<string[]> {
+async function brainArtifactPaths(ctx: AgentChatParserContext, brainDir: string | undefined): Promise<string[]> {
   if (!brainDir) return [];
   const files: string[] = [];
   for (const fileName of BRAIN_ARTIFACT_BASE_FILES) {
-    const filePath = await findBrainArtifactPath(brainDir, fileName);
+    const filePath = await findBrainArtifactPath(ctx, brainDir, fileName);
     if (filePath) files.push(filePath);
   }
   return files;
 }
 
-async function buildSessionFromRecord(record: AntigravityRecord): Promise<UnifiedSession | null> {
-  if (record.legacyPath) return buildLegacySession(record.legacyPath, record.id);
+async function buildSessionFromRecord(
+  ctx: AgentChatParserContext,
+  record: AntigravityRecord,
+): Promise<UnifiedSession | null> {
+  if (record.legacyPath) return buildLegacySession(ctx, record.legacyPath, record.id);
 
   // Skip metadata-only records that have no concrete backing path; downstream
   // inspect/extract paths fs.statSync the originalPath, which would crash if
   // we emit a fallback to the (directory-only) antigravity root.
   if (!record.conversationPath && !record.brainDir) return null;
 
-  const artifactPaths = await brainArtifactPaths(record.brainDir);
-  const stats = await pathStats([record.conversationPath, ...artifactPaths].filter(isNonEmptyString));
-  const cwd = record.live?.cwd ?? record.state?.cwd ?? (await inferCwdFromBrain(record.brainDir)) ?? '';
+  const artifactPaths = await brainArtifactPaths(ctx, record.brainDir);
+  const stats = await pathStats(ctx, [record.conversationPath, ...artifactPaths].filter(isNonEmptyString));
+  const cwd = record.live?.cwd ?? record.state?.cwd ?? (await inferCwdFromBrain(ctx, record.brainDir)) ?? '';
   const createdAt =
     record.live?.createdAt ?? record.state?.createdAt ?? stats.createdAt ?? stats.updatedAt ?? new Date(0);
   const updatedAt = record.live?.updatedAt ?? record.state?.updatedAt ?? stats.updatedAt ?? createdAt;
@@ -1090,12 +1124,16 @@ async function buildSessionFromRecord(record: AntigravityRecord): Promise<Unifie
   };
 }
 
-async function buildLegacySession(filePath: string, prefixedId?: string): Promise<UnifiedSession | null> {
-  const entries = await parseLegacySessionFile(filePath);
+async function buildLegacySession(
+  ctx: AgentChatParserContext,
+  filePath: string,
+  prefixedId?: string,
+): Promise<UnifiedSession | null> {
+  const entries = await parseLegacySessionFile(ctx, filePath);
   const relevant = entries.filter((entry) => entry.type === 'user' || entry.type === 'assistant');
   if (relevant.length === 0) return null;
 
-  const fileStats = await statSafe(filePath);
+  const fileStats = await statSafe(ctx, filePath);
   const mtime = fileStats?.mtime ?? new Date();
   const ext = path.extname(filePath);
   const id = prefixedId ?? `legacy:${path.basename(filePath, ext)}`;
@@ -1113,30 +1151,34 @@ async function buildLegacySession(filePath: string, prefixedId?: string): Promis
   };
 }
 
-async function discoverRecords(): Promise<Map<string, AntigravityRecord>> {
+async function discoverRecords(ctx: AgentChatParserContext): Promise<Map<string, AntigravityRecord>> {
   const records = new Map<string, AntigravityRecord>();
-  await discoverConversationRecords(records);
-  await discoverBrainRecords(records);
-  await discoverStateRecords(records);
-  await discoverLiveRecords(records);
-  await discoverLegacyRecords(records);
+  await discoverConversationRecords(ctx, records);
+  await discoverBrainRecords(ctx, records);
+  await discoverStateRecords(ctx, records);
+  await discoverLiveRecords(ctx, records);
+  await discoverLegacyRecords(ctx, records);
   return records;
 }
 
-export async function parseAntigravitySessions(): Promise<UnifiedSession[]> {
-  const records = await discoverRecords();
+export async function parseAntigravitySessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+  const records = await discoverRecords(ctx);
   const sessions: UnifiedSession[] = [];
 
   for (const record of records.values()) {
-    const session = await buildSessionFromRecord(record);
+    const session = await buildSessionFromRecord(ctx, record);
     if (session) sessions.push(session);
   }
 
   return sessions.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
-async function readLegacyMessages(filePath: string, fallbackDate: Date): Promise<MessageDraft[]> {
-  const entries = await parseLegacySessionFile(filePath);
+async function readLegacyMessages(
+  ctx: AgentChatParserContext,
+  filePath: string,
+  fallbackDate: Date,
+): Promise<MessageDraft[]> {
+  const entries = await parseLegacySessionFile(ctx, filePath);
   const messages: MessageDraft[] = [];
 
   for (const entry of entries) {
@@ -1155,12 +1197,15 @@ function extractSessionId(session: UnifiedSession): string {
   return session.id.startsWith('legacy:') ? session.id.slice('legacy:'.length) : session.id;
 }
 
-async function resolveBrainDirForSession(session: UnifiedSession): Promise<string | undefined> {
+async function resolveBrainDirForSession(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<string | undefined> {
   const id = extractSessionId(session);
   const direct = path.join(getBrainDir(), id);
   if (await exists(direct)) return direct;
   const maybeRecordDir = path.dirname(session.originalPath);
-  if (path.basename(maybeRecordDir) === id && (await hasBrainArtifacts(maybeRecordDir))) return maybeRecordDir;
+  if (path.basename(maybeRecordDir) === id && (await hasBrainArtifacts(ctx, maybeRecordDir))) return maybeRecordDir;
   return undefined;
 }
 
@@ -1170,7 +1215,7 @@ function taskFromMarkdown(markdown: string): string | undefined {
   return cleanSummary(markdown, 100);
 }
 
-async function readOfflineArtifacts(brainDir: string | undefined): Promise<{
+async function readOfflineArtifacts(ctx: AgentChatParserContext, brainDir: string | undefined): Promise<{
   messages: MessageDraft[];
 }> {
   if (!brainDir) {
@@ -1178,12 +1223,12 @@ async function readOfflineArtifacts(brainDir: string | undefined): Promise<{
   }
 
   const messages: MessageDraft[] = [];
-  const taskPath = await findBrainArtifactPath(brainDir, 'task.md');
-  const planPath = await findBrainArtifactPath(brainDir, 'implementation_plan.md');
-  const walkthroughPath = await findBrainArtifactPath(brainDir, 'walkthrough.md');
-  const task = taskPath ? await readArtifact(taskPath) : undefined;
-  const plan = planPath ? await readArtifact(planPath) : undefined;
-  const walkthrough = walkthroughPath ? await readArtifact(walkthroughPath) : undefined;
+  const taskPath = await findBrainArtifactPath(ctx, brainDir, 'task.md');
+  const planPath = await findBrainArtifactPath(ctx, brainDir, 'implementation_plan.md');
+  const walkthroughPath = await findBrainArtifactPath(ctx, brainDir, 'walkthrough.md');
+  const task = taskPath ? await readArtifact(ctx, taskPath) : undefined;
+  const plan = planPath ? await readArtifact(ctx, planPath) : undefined;
+  const walkthrough = walkthroughPath ? await readArtifact(ctx, walkthroughPath) : undefined;
 
   if (task) {
     messages.push({ role: 'user', content: taskFromMarkdown(task) ?? task });
@@ -1330,25 +1375,26 @@ function extractStepsResponse(response: unknown): unknown[] {
 }
 
 async function extractLiveContext(
+  ctx: AgentChatParserContext,
   session: UnifiedSession,
   preconnected?: RpcConnection,
 ): Promise<RpcStepExtraction | null> {
-  const connection = preconnected ?? (await findRpcConnection());
+  const connection = preconnected ?? (await findRpcConnection(ctx));
   if (!connection) return null;
 
   const cascadeId = extractSessionId(session);
-  const stepsResponse = await callRpc(connection, 'GetCascadeTrajectorySteps', { cascadeId });
+  const stepsResponse = await callRpc(ctx, connection, 'GetCascadeTrajectorySteps', { cascadeId });
   let steps = extractStepsResponse(stepsResponse);
   let trajectory: Record<string, unknown> | undefined;
 
   if (steps.length === 0) {
-    const fallbackResponse = await callRpc(connection, 'GetCascadeTrajectory', { cascadeId });
+    const fallbackResponse = await callRpc(ctx, connection, 'GetCascadeTrajectory', { cascadeId });
     if (isRecord(fallbackResponse)) {
       trajectory = recordAt(fallbackResponse, 'trajectory');
       steps = extractStepsResponse(fallbackResponse);
     }
   } else {
-    const trajectoryResponse = await callRpc(connection, 'GetCascadeTrajectory', { cascadeId });
+    const trajectoryResponse = await callRpc(ctx, connection, 'GetCascadeTrajectory', { cascadeId });
     if (isRecord(trajectoryResponse)) trajectory = recordAt(trajectoryResponse, 'trajectory');
   }
 
@@ -1368,14 +1414,14 @@ function liveHasContent(live: RpcStepExtraction): boolean {
 function shouldAutoLaunchAntigravity(): boolean {
   // Test/CI escape hatch — also honored by findRpcConnection.
   if (process.env.ANTIGRAVITY_DISABLE_RPC === '1') return false;
-  const explicit = process.env.CONTINUES_LAUNCH_ANTIGRAVITY?.trim();
+  const explicit = process.env.BUILDSIP_LAUNCH_ANTIGRAVITY?.trim();
   if (explicit === '0' || explicit === 'false' || explicit === 'no') return false;
   if (explicit === '1' || explicit === 'true' || explicit === 'yes') return true;
   // Default: only auto-launch in interactive terminals so piped/CI runs stay headless.
   return Boolean(process.stdout.isTTY);
 }
 
-function spawnAntigravity(): boolean {
+function spawnAntigravity(ctx: AgentChatParserContext): boolean {
   try {
     let child: childProcess.ChildProcess;
     if (process.platform === 'darwin') {
@@ -1390,33 +1436,37 @@ function spawnAntigravity(): boolean {
     // uncaught exception would crash the cli and skip the offline fallback.
     // mirrors the launch pattern used by the old CLI wrapper.
     child.on('error', (err) => {
-      logger.debug('antigravity: spawned IDE process error', err);
+      ctx.log.debug('antigravity: spawned IDE process error', err);
     });
     child.unref();
     return true;
   } catch (err) {
-    logger.debug('antigravity: failed to spawn IDE', err);
+    ctx.log.debug('antigravity: failed to spawn IDE', err);
     return false;
   }
 }
 
-async function pollForRpcConnection(timeoutMs: number, intervalMs: number): Promise<RpcConnection | null> {
+async function pollForRpcConnection(
+  ctx: AgentChatParserContext,
+  timeoutMs: number,
+  intervalMs: number,
+): Promise<RpcConnection | null> {
   const deadline = Date.now() + timeoutMs;
   // Probe immediately — language_server may already be coming up from a prior launch.
-  const initial = await findRpcConnection();
+  const initial = await findRpcConnection(ctx);
   if (initial) return initial;
 
   while (Date.now() < deadline) {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, intervalMs);
     });
-    const connection = await findRpcConnection();
+    const connection = await findRpcConnection(ctx);
     if (connection) return connection;
   }
   return null;
 }
 
-async function tryAutoLaunchAndConnect(): Promise<RpcConnection | null> {
+async function tryAutoLaunchAndConnect(ctx: AgentChatParserContext): Promise<RpcConnection | null> {
   if (!shouldAutoLaunchAntigravity()) return null;
 
   // gate the spawn on rpc actually being offline. extractLiveContext returns
@@ -1425,43 +1475,44 @@ async function tryAutoLaunchAndConnect(): Promise<RpcConnection | null> {
   // only help case (a); in case (b) it would just bounce the user's dock for
   // nothing. skipping the spawn here lets us fall straight to the offline
   // brain-artifact path, which is what we want.
-  const existing = await findRpcConnection();
+  const existing = await findRpcConnection(ctx);
   if (existing) return null;
 
-  if (!spawnAntigravity()) {
-    logger.warn('antigravity: could not launch Antigravity — falling back to offline brain artifacts.');
+  if (!spawnAntigravity(ctx)) {
+    ctx.log.warn('antigravity: could not launch Antigravity — falling back to offline brain artifacts.');
     return null;
   }
 
   // these progress messages are user-facing ux during a blocking operation
-  // (up to 25s while the ide spins up) rather than diagnostic output, but we
-  // still route them through the logger to honor the project convention. by
-  // default the logger is silent, so casual users won't see anything; running
-  // with --verbose surfaces the full launching/connected/timeout sequence.
-  logger.warn(
+  // (up to 25s while the ide spins up) rather than diagnostic output, so keep
+  // them on warn instead of debug.
+  ctx.log.warn(
     'antigravity: language server is offline — launching the IDE to read the encrypted transcript… ' +
-      '(set CONTINUES_LAUNCH_ANTIGRAVITY=0 to skip)',
+      '(set BUILDSIP_LAUNCH_ANTIGRAVITY=0 to skip)',
   );
 
   const timeoutMs = getLaunchTimeoutMs();
   const start = Date.now();
-  const connection = await pollForRpcConnection(timeoutMs, getLaunchPollIntervalMs());
+  const connection = await pollForRpcConnection(ctx, timeoutMs, getLaunchPollIntervalMs());
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
 
   if (connection) {
-    logger.warn(`antigravity: language server connected in ${elapsed}s.`);
+    ctx.log.warn(`antigravity: language server connected in ${elapsed}s.`);
     return connection;
   }
 
-  logger.warn(
+  ctx.log.warn(
     `antigravity: language server did not come online within ${timeoutMs / 1000}s — falling back to offline brain artifacts.`,
   );
   return null;
 }
 
-async function extractOfflineContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const brainDir = await resolveBrainDirForSession(session);
-  const artifacts = await readOfflineArtifacts(brainDir);
+async function extractOfflineContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const brainDir = await resolveBrainDirForSession(ctx, session);
+  const artifacts = await readOfflineArtifacts(ctx, brainDir);
 
   return {
     session,
@@ -1469,16 +1520,19 @@ async function extractOfflineContext(session: UnifiedSession): Promise<ParsedAge
   };
 }
 
-export async function extractAntigravityContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
+export async function extractAntigravityContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
   if (session.id.startsWith('legacy:')) {
-    const messages = await readLegacyMessages(session.originalPath, session.updatedAt);
+    const messages = await readLegacyMessages(ctx, session.originalPath, session.updatedAt);
     return {
       session,
       messages: sequenceMessages(messages),
     };
   }
 
-  const live = await extractLiveContext(session);
+  const live = await extractLiveContext(ctx, session);
   if (live && liveHasContent(live)) {
     return { session, messages: sequenceMessages(live.messages) };
   }
@@ -1487,13 +1541,13 @@ export async function extractAntigravityContext(session: UnifiedSession): Promis
   // running language_server holds the decryption key. If it's offline, try to
   // launch the IDE in the foreground and aggressively poll for the RPC port to
   // come up so we can produce a real transcript instead of empty handoffs.
-  const connection = await tryAutoLaunchAndConnect();
+  const connection = await tryAutoLaunchAndConnect(ctx);
   if (connection) {
-    const relaunched = await extractLiveContext(session, connection);
+    const relaunched = await extractLiveContext(ctx, session, connection);
     if (relaunched && liveHasContent(relaunched)) {
       return { session, messages: sequenceMessages(relaunched.messages) };
     }
   }
 
-  return extractOfflineContext(session);
+  return extractOfflineContext(ctx, session);
 }

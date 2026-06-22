@@ -9,6 +9,13 @@ import type { SessionSource } from './tool-names';
 export type { ContentBlock, TextBlock } from './content-blocks';
 export { isSessionSource, type SessionSource, TOOL_NAMES } from './tool-names';
 
+export type AgentChatParserContext = {
+  log: {
+    debug(...args: unknown[]): void;
+    warn(...args: unknown[]): void;
+  };
+};
+
 /** Unified session metadata */
 export interface UnifiedSession {
   /** Unique session identifier */

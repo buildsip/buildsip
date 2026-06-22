@@ -1,8 +1,7 @@
 import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
 import type { SessionSource } from '../types/tool-names';
 import { extractRepoFromCwd, homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
 import { matchesCwd } from '../utils/slug';
@@ -69,48 +68,48 @@ interface ParsedCrushMessage {
   parts: ParsedCrushParts;
 }
 
-function getDatabaseSyncConstructor(): DatabaseSyncConstructor | undefined {
+function getDatabaseSyncConstructor(ctx: AgentChatParserContext): DatabaseSyncConstructor | undefined {
   try {
     const sqlite = require('node:sqlite') as { DatabaseSync: DatabaseSyncConstructor };
     return sqlite.DatabaseSync;
   } catch (err) {
-    logger.debug('crush: node:sqlite is unavailable', err);
+    ctx.log.debug('crush: node:sqlite is unavailable', err);
     return undefined;
   }
 }
 
-async function pathExists(filePath: string): Promise<boolean> {
+async function pathExists(ctx: AgentChatParserContext, filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
     return true;
   } catch (err) {
     const code = nodeErrorCode(err);
     if (code !== 'ENOENT' && code !== 'ENOTDIR') {
-      logger.debug('crush: path is not readable', filePath, err);
+      ctx.log.debug('crush: path is not readable', filePath, err);
     }
     return false;
   }
 }
 
-async function openReadOnlyDatabase(dbPath: string): Promise<SqliteDatabase | undefined> {
-  if (!(await pathExists(dbPath))) return undefined;
+async function openReadOnlyDatabase(ctx: AgentChatParserContext, dbPath: string): Promise<SqliteDatabase | undefined> {
+  if (!(await pathExists(ctx, dbPath))) return undefined;
 
-  const DatabaseSync = getDatabaseSyncConstructor();
+  const DatabaseSync = getDatabaseSyncConstructor(ctx);
   if (!DatabaseSync) return undefined;
 
   try {
     return new DatabaseSync(dbPath, { readOnly: true });
   } catch (err) {
-    logger.debug('crush: failed to open SQLite database read-only', dbPath, err);
+    ctx.log.debug('crush: failed to open SQLite database read-only', dbPath, err);
     return undefined;
   }
 }
 
-function closeDatabase(db: SqliteDatabase, dbPath: string): void {
+function closeDatabase(ctx: AgentChatParserContext, db: SqliteDatabase, dbPath: string): void {
   try {
     db.close();
   } catch (err) {
-    logger.debug('crush: failed to close SQLite database', dbPath, err);
+    ctx.log.debug('crush: failed to close SQLite database', dbPath, err);
   }
 }
 
@@ -144,6 +143,7 @@ function addCandidate(
 }
 
 async function addCwdCandidates(
+  ctx: AgentChatParserContext,
   candidates: CrushDbCandidate[],
   seen: Set<string>,
   cwd: string | undefined,
@@ -154,7 +154,7 @@ async function addCwdCandidates(
   while (true) {
     const dbPath = path.join(current, CRUSH_DATA_DIR, CRUSH_DB_FILE);
     addCandidate(candidates, seen, dbPath, current);
-    if (await pathExists(dbPath)) return;
+    if (await pathExists(ctx, dbPath)) return;
 
     const parent = path.dirname(current);
     if (parent === current) return;
@@ -174,7 +174,11 @@ function crushGlobalDataPath(): string {
   return path.join(homeDir(), '.local', 'share', 'crush', 'crush.json');
 }
 
-async function addProjectIndexCandidates(candidates: CrushDbCandidate[], seen: Set<string>): Promise<void> {
+async function addProjectIndexCandidates(
+  ctx: AgentChatParserContext,
+  candidates: CrushDbCandidate[],
+  seen: Set<string>,
+): Promise<void> {
   const projectsPath = path.join(path.dirname(crushGlobalDataPath()), 'projects.json');
 
   try {
@@ -192,12 +196,15 @@ async function addProjectIndexCandidates(candidates: CrushDbCandidate[], seen: S
   } catch (err) {
     const code = nodeErrorCode(err);
     if (code !== 'ENOENT' && code !== 'ENOTDIR') {
-      logger.debug('crush: failed to inspect projects index', projectsPath, err);
+      ctx.log.debug('crush: failed to inspect projects index', projectsPath, err);
     }
   }
 }
 
-async function getCrushDbCandidates(options?: SessionParseOptions): Promise<CrushDbCandidate[]> {
+async function getCrushDbCandidates(
+  ctx: AgentChatParserContext,
+  options?: SessionParseOptions,
+): Promise<CrushDbCandidate[]> {
   const candidates: CrushDbCandidate[] = [];
   const seen = new Set<string>();
   const explicitDb = process.env.CRUSH_DB || process.env.CRUSH_DB_PATH;
@@ -211,10 +218,10 @@ async function getCrushDbCandidates(options?: SessionParseOptions): Promise<Crus
     addCandidate(candidates, seen, path.join(process.env.CRUSH_DATA_DIR, CRUSH_DB_FILE));
   }
 
-  await addProjectIndexCandidates(candidates, seen);
-  await addCwdCandidates(candidates, seen, options?.cwd);
+  await addProjectIndexCandidates(ctx, candidates, seen);
+  await addCwdCandidates(ctx, candidates, seen, options?.cwd);
   if (options?.cwd !== process.cwd()) {
-    await addCwdCandidates(candidates, seen, process.cwd());
+    await addCwdCandidates(ctx, candidates, seen, process.cwd());
   }
   addCandidate(candidates, seen, path.join(homeDir(), CRUSH_DATA_DIR, CRUSH_DB_FILE));
 
@@ -261,26 +268,38 @@ function booleanValue(record: Record<string, unknown>, key: string): boolean | u
   return undefined;
 }
 
-function safeAll(db: SqliteDatabase, sql: string, params: unknown[], label: string): unknown[] {
+function safeAll(
+  ctx: AgentChatParserContext,
+  db: SqliteDatabase,
+  sql: string,
+  params: unknown[],
+  label: string,
+): unknown[] {
   try {
     return db.prepare(sql).all(...params);
   } catch (err) {
-    logger.debug(`crush: failed to query ${label}`, err);
+    ctx.log.debug(`crush: failed to query ${label}`, err);
     return [];
   }
 }
 
-function safeGet(db: SqliteDatabase, sql: string, params: unknown[], label: string): unknown | undefined {
+function safeGet(
+  ctx: AgentChatParserContext,
+  db: SqliteDatabase,
+  sql: string,
+  params: unknown[],
+  label: string,
+): unknown | undefined {
   try {
     return db.prepare(sql).get(...params);
   } catch (err) {
-    logger.debug(`crush: failed to query ${label}`, err);
+    ctx.log.debug(`crush: failed to query ${label}`, err);
     return undefined;
   }
 }
 
-function columnNames(db: SqliteDatabase, tableName: 'sessions' | 'messages'): Set<string> {
-  const rows = safeAll(db, `PRAGMA table_info(${tableName})`, [], `${tableName} columns`);
+function columnNames(ctx: AgentChatParserContext, db: SqliteDatabase, tableName: 'sessions' | 'messages'): Set<string> {
+  const rows = safeAll(ctx, db, `PRAGMA table_info(${tableName})`, [], `${tableName} columns`);
   const names = new Set<string>();
 
   for (const row of rows) {
@@ -292,9 +311,9 @@ function columnNames(db: SqliteDatabase, tableName: 'sessions' | 'messages'): Se
   return names;
 }
 
-function getSchema(db: SqliteDatabase): CrushSchema | undefined {
-  const sessionColumns = columnNames(db, 'sessions');
-  const messageColumns = columnNames(db, 'messages');
+function getSchema(ctx: AgentChatParserContext, db: SqliteDatabase): CrushSchema | undefined {
+  const sessionColumns = columnNames(ctx, db, 'sessions');
+  const messageColumns = columnNames(ctx, db, 'messages');
 
   if (!sessionColumns.has('id') || !messageColumns.has('session_id')) {
     return undefined;
@@ -376,12 +395,12 @@ function parseMessageRow(row: unknown): CrushMessageRow | undefined {
   };
 }
 
-function parseParts(partsJson: string): ParsedCrushParts {
+function parseParts(ctx: AgentChatParserContext, partsJson: string): ParsedCrushParts {
   let parsed: unknown;
   try {
     parsed = JSON.parse(partsJson);
   } catch (err) {
-    logger.debug('crush: failed to parse message parts JSON', err);
+    ctx.log.debug('crush: failed to parse message parts JSON', err);
     return { text: '', malformed: true };
   }
 
@@ -460,11 +479,12 @@ function buildLatestAssistantSubquery(schema: CrushSchema, column: 'model' | 'pr
 }
 
 function listSessionsFromDb(
+  ctx: AgentChatParserContext,
   db: SqliteDatabase,
   candidate: CrushDbCandidate,
   options?: SessionParseOptions,
 ): UnifiedSession[] {
-  const schema = getSchema(db);
+  const schema = getSchema(ctx, db);
   if (!schema) return [];
 
   const messageSummaryJoin = schema.messageColumns.has('is_summary_message')
@@ -480,6 +500,7 @@ function listSessionsFromDb(
   const orderBy = `COALESCE(${orderMessageAt}, ${sessionUpdatedAt}, ${sessionCreatedAt}, 0)`;
   const latestModelExpression = buildLatestAssistantSubquery(schema, 'model');
   const rows = safeAll(
+    ctx,
     db,
     `SELECT
        s.id AS id,
@@ -542,29 +563,37 @@ function sessionDbCandidate(session: UnifiedSession): CrushDbCandidate | undefin
   };
 }
 
-async function findDbForSession(session: UnifiedSession): Promise<CrushDbCandidate | undefined> {
+async function findDbForSession(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<CrushDbCandidate | undefined> {
   const direct = sessionDbCandidate(session);
-  if (direct && (await pathExists(direct.dbPath))) return direct;
+  if (direct && (await pathExists(ctx, direct.dbPath))) return direct;
 
-  const candidates = await getCrushDbCandidates(session.cwd ? { cwd: session.cwd } : undefined);
+  const candidates = await getCrushDbCandidates(ctx, session.cwd ? { cwd: session.cwd } : undefined);
   for (const candidate of candidates) {
-    if (!(await pathExists(candidate.dbPath))) continue;
-    const db = await openReadOnlyDatabase(candidate.dbPath);
+    if (!(await pathExists(ctx, candidate.dbPath))) continue;
+    const db = await openReadOnlyDatabase(ctx, candidate.dbPath);
     if (!db) continue;
     try {
-      const schema = getSchema(db);
+      const schema = getSchema(ctx, db);
       if (!schema) continue;
-      const row = safeGet(db, 'SELECT id FROM sessions WHERE id = ? LIMIT 1', [session.id], 'Crush session lookup');
+      const row = safeGet(ctx, db, 'SELECT id FROM sessions WHERE id = ? LIMIT 1', [session.id], 'Crush session lookup');
       if (isRecord(row) && stringValue(row, 'id') === session.id) return candidate;
     } finally {
-      closeDatabase(db, candidate.dbPath);
+      closeDatabase(ctx, db, candidate.dbPath);
     }
   }
 
   return undefined;
 }
 
-function listMessageRows(db: SqliteDatabase, schema: CrushSchema, sessionId: string): CrushMessageRow[] {
+function listMessageRows(
+  ctx: AgentChatParserContext,
+  db: SqliteDatabase,
+  schema: CrushSchema,
+  sessionId: string,
+): CrushMessageRow[] {
   const idSelect = selectColumn(schema.messageColumns, 'id', 'CAST(rowid AS TEXT)', 'id');
   const roleSelect = selectColumn(schema.messageColumns, 'role', "''", 'role');
   const partsSelect = selectColumn(schema.messageColumns, 'parts', "'[]'", 'parts');
@@ -573,6 +602,7 @@ function listMessageRows(db: SqliteDatabase, schema: CrushSchema, sessionId: str
   const providerSelect = selectColumn(schema.messageColumns, 'provider', 'NULL', 'provider');
   const summarySelect = selectColumn(schema.messageColumns, 'is_summary_message', '0', 'isSummaryMessage');
   const rows = safeAll(
+    ctx,
     db,
     `SELECT
        ${idSelect},
@@ -592,13 +622,13 @@ function listMessageRows(db: SqliteDatabase, schema: CrushSchema, sessionId: str
   return rows.map(parseMessageRow).filter((row): row is CrushMessageRow => Boolean(row));
 }
 
-function buildParsedMessages(rows: CrushMessageRow[]): ParsedCrushMessage[] {
+function buildParsedMessages(ctx: AgentChatParserContext, rows: CrushMessageRow[]): ParsedCrushMessage[] {
   const messages: ParsedCrushMessage[] = [];
 
   for (const row of rows) {
     if (row.isSummaryMessage) continue;
 
-    const parts = parseParts(row.parts);
+    const parts = parseParts(ctx, row.parts);
     if (parts.malformed) continue;
 
     const role = normalizeRole(row.role);
@@ -648,18 +678,21 @@ function emptyConversation(session: UnifiedSession): ParsedAgentConversation {
 /**
  * Parse all Crush sessions from read-only SQLite databases.
  */
-export async function parseCrushSessions(options?: SessionParseOptions): Promise<UnifiedSession[]> {
-  const candidates = await getCrushDbCandidates(options);
+export async function parseCrushSessions(
+  ctx: AgentChatParserContext,
+  options?: SessionParseOptions,
+): Promise<UnifiedSession[]> {
+  const candidates = await getCrushDbCandidates(ctx, options);
   const sessions: UnifiedSession[] = [];
 
   for (const candidate of candidates) {
-    const db = await openReadOnlyDatabase(candidate.dbPath);
+    const db = await openReadOnlyDatabase(ctx, candidate.dbPath);
     if (!db) continue;
 
     try {
-      sessions.push(...listSessionsFromDb(db, candidate, options));
+      sessions.push(...listSessionsFromDb(ctx, db, candidate, options));
     } finally {
-      closeDatabase(db, candidate.dbPath);
+      closeDatabase(ctx, db, candidate.dbPath);
     }
   }
 
@@ -670,25 +703,28 @@ export async function parseCrushSessions(options?: SessionParseOptions): Promise
 /**
  * Extract visible messages from a Crush session.
  */
-export async function extractCrushContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const candidate = await findDbForSession(session);
+export async function extractCrushContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const candidate = await findDbForSession(ctx, session);
   if (!candidate) {
     return emptyConversation(session);
   }
 
-  const db = await openReadOnlyDatabase(candidate.dbPath);
+  const db = await openReadOnlyDatabase(ctx, candidate.dbPath);
   if (!db) {
     return emptyConversation(session);
   }
 
   try {
-    const schema = getSchema(db);
+    const schema = getSchema(ctx, db);
     if (!schema) {
       return emptyConversation(session);
     }
 
-    const rows = listMessageRows(db, schema, session.id);
-    const parsed = buildParsedMessages(rows);
+    const rows = listMessageRows(ctx, db, schema, session.id);
+    const parsed = buildParsedMessages(ctx, rows);
     const extracted = buildConversation(parsed);
     const enrichedSession: UnifiedSession = {
       ...session,
@@ -701,6 +737,6 @@ export async function extractCrushContext(session: UnifiedSession): Promise<Pars
       messages: sequenceMessages(extracted.messages),
     };
   } finally {
-    closeDatabase(db, candidate.dbPath);
+    closeDatabase(ctx, db, candidate.dbPath);
   }
 }

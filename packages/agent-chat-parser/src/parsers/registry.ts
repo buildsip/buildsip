@@ -1,4 +1,10 @@
-import type { ParsedAgentConversation, SessionParseOptions, SessionSource, UnifiedSession } from '../types/index';
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  SessionParseOptions,
+  SessionSource,
+  UnifiedSession,
+} from '../types/index';
 import { TOOL_NAMES } from '../types/tool-names';
 import { extractAmpContext, parseAmpSessions } from './amp';
 import { extractAntigravityContext, parseAntigravitySessions } from './antigravity';
@@ -42,11 +48,11 @@ export interface ToolAdapter {
    */
   extraEnvVars?: string[];
   /** Discover and index sessions. Parsers may ignore unsupported options. */
-  parseSessions: (options?: SessionParseOptions) => Promise<UnifiedSession[]>;
+  parseSessions: (ctx: AgentChatParserContext, options?: SessionParseOptions) => Promise<UnifiedSession[]>;
   /** True when parseSessions({ cwd }) can avoid a full global scan. */
   supportsCwdLookup?: boolean;
   /** Parse the full visible conversation for a discovered session. */
-  parseSession: (session: UnifiedSession) => Promise<ParsedAgentConversation>;
+  parseSession: (ctx: AgentChatParserContext, session: UnifiedSession) => Promise<ParsedAgentConversation>;
 }
 
 /**
@@ -165,7 +171,7 @@ register({
   label: 'Cline',
   storagePath: '~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks/',
   envVar: 'CLINE_STORAGE_PATH',
-  extraEnvVars: ['CONTINUES_CLINE_STORAGE_PATH'],
+  extraEnvVars: ['BUILDSIP_CLINE_STORAGE_PATH'],
   parseSessions: parseClineSessions,
   parseSession: extractClineContext,
 });
@@ -176,7 +182,7 @@ register({
   label: 'Roo Code',
   storagePath: '~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/',
   envVar: 'ROO_CODE_STORAGE_PATH',
-  extraEnvVars: ['ROO_CLINE_STORAGE_PATH', 'CONTINUES_ROO_CODE_STORAGE_PATH'],
+  extraEnvVars: ['ROO_CLINE_STORAGE_PATH', 'BUILDSIP_ROO_CODE_STORAGE_PATH'],
   parseSessions: parseRooCodeSessions,
   parseSession: extractRooCodeContext,
 });
@@ -192,7 +198,7 @@ register({
     'LOCALAPPDATA',
     'APPDATA',
     'KILO_CODE_STORAGE_PATH',
-    'CONTINUES_KILO_CODE_STORAGE_PATH',
+    'BUILDSIP_KILO_CODE_STORAGE_PATH',
   ],
   parseSessions: parseKiloCodeSessions,
   parseSession: extractKiloCodeContext,

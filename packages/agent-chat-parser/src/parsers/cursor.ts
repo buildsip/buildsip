@@ -1,7 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
 import { CursorTranscriptLineSchema } from '../types/schemas';
 import { cleanUserQueryText, isRealUserMessage, isSystemContent } from '../utils/content';
 import { findFiles } from '../utils/fs-helpers';
@@ -179,15 +178,18 @@ function extractLineModel(line: NormalizedCursorLine): string | undefined {
   return getStringField(line.raw, 'model') ?? getStringField(message, 'model');
 }
 
-async function readNormalizedTranscript(filePath: string): Promise<NormalizedCursorLine[]> {
-  const records = await readJsonlFile<unknown>(filePath);
+async function readNormalizedTranscript(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<NormalizedCursorLine[]> {
+  const records = await readJsonlFile(ctx, filePath);
   const lines: NormalizedCursorLine[] = [];
   for (const record of records) {
     const line = normalizeCursorLine(record);
     if (line) {
       lines.push(line);
     } else {
-      logger.debug('cursor: skipping malformed transcript record', filePath);
+      ctx.log.debug('cursor: skipping malformed transcript record', filePath);
     }
   }
   return lines;
@@ -205,7 +207,7 @@ async function readNormalizedTranscript(filePath: string): Promise<NormalizedCur
  * filename — `getSessionId()` derives the UUID, and `parseCursorSessions()`
  * deduplicates by id when both layouts coexist for the same session.
  */
-async function findTranscriptFiles(): Promise<string[]> {
+async function findTranscriptFiles(ctx: AgentChatParserContext): Promise<string[]> {
   if (!fs.existsSync(CURSOR_PROJECTS_DIR)) return [];
 
   const files: string[] = [];
@@ -214,14 +216,14 @@ async function findTranscriptFiles(): Promise<string[]> {
     for (const projectDir of projectDirs) {
       if (!projectDir.isDirectory()) continue;
       const transcriptsDir = path.join(CURSOR_PROJECTS_DIR, projectDir.name, 'agent-transcripts');
-      const found = findFiles(transcriptsDir, {
+      const found = findFiles(ctx, transcriptsDir, {
         match: (entry, fullPath) => entry.name.endsWith('.jsonl') && fullPath.includes('agent-transcripts'),
         maxDepth: 2,
       });
       files.push(...found);
     }
   } catch (err) {
-    logger.debug('cursor: cannot read base directory', CURSOR_PROJECTS_DIR, err);
+    ctx.log.debug('cursor: cannot read base directory', CURSOR_PROJECTS_DIR, err);
     // Skip if base dir can't be read
   }
   return files;
@@ -271,7 +273,12 @@ function getSessionId(filePath: string): string {
  *
  * Falls back to slug-derived cwd when `repo.json` is absent or unreadable.
  */
-async function resolveProjectCwd(projectDir: string, slug: string, cache: Map<string, string>): Promise<string> {
+async function resolveProjectCwd(
+  ctx: AgentChatParserContext,
+  projectDir: string,
+  slug: string,
+  cache: Map<string, string>,
+): Promise<string> {
   const fallback = cwdFromSlug(slug);
   if (!projectDir) return fallback;
 
@@ -301,7 +308,7 @@ async function resolveProjectCwd(projectDir: string, slug: string, cache: Map<st
       }
     }
   } catch (err) {
-    logger.debug('cursor: failed to read project metadata', repoJsonPath, err);
+    ctx.log.debug('cursor: failed to read project metadata', repoJsonPath, err);
   }
 
   cache.set(projectDir, resolved);
@@ -311,7 +318,7 @@ async function resolveProjectCwd(projectDir: string, slug: string, cache: Map<st
 /**
  * Scan the transcript head for discovery metadata.
  */
-async function parseSessionInfo(filePath: string): Promise<{
+async function parseSessionInfo(ctx: AgentChatParserContext, filePath: string): Promise<{
   firstUserMessage: string;
   firstTimestamp?: Date;
   model?: string;
@@ -322,7 +329,7 @@ async function parseSessionInfo(filePath: string): Promise<{
 
   // Scan head for first user message. The 100-record cap is a discovery
   // optimization that avoids streaming large transcripts twice.
-  await scanJsonlHead(filePath, 100, (parsed) => {
+  await scanJsonlHead(ctx, filePath, 100, (parsed) => {
     const line = normalizeCursorLine(parsed);
     if (!line) return 'continue';
 
@@ -357,8 +364,8 @@ async function parseSessionInfo(filePath: string): Promise<{
 /**
  * Parse all Cursor sessions
  */
-export async function parseCursorSessions(): Promise<UnifiedSession[]> {
-  const files = await findTranscriptFiles();
+export async function parseCursorSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+  const files = await findTranscriptFiles(ctx);
   const sessionsById = new Map<string, UnifiedSession>();
   const projectCwdCache = new Map<string, string>();
 
@@ -367,11 +374,11 @@ export async function parseCursorSessions(): Promise<UnifiedSession[]> {
       const fileStats = fs.statSync(filePath);
       if (fileStats.size === 0) continue;
 
-      const { firstUserMessage, firstTimestamp, model } = await parseSessionInfo(filePath);
+      const { firstUserMessage, firstTimestamp, model } = await parseSessionInfo(ctx, filePath);
       if (!firstUserMessage) continue;
 
       const slug = getProjectSlug(filePath);
-      const cwd = await resolveProjectCwd(getProjectDir(filePath), slug, projectCwdCache);
+      const cwd = await resolveProjectCwd(ctx, getProjectDir(filePath), slug, projectCwdCache);
 
       const id = getSessionId(filePath);
       const next: UnifiedSession = {
@@ -394,7 +401,7 @@ export async function parseCursorSessions(): Promise<UnifiedSession[]> {
         sessionsById.set(id, next);
       }
     } catch (err) {
-      logger.debug('cursor: skipping unparseable session', filePath, err);
+      ctx.log.debug('cursor: skipping unparseable session', filePath, err);
       // Skip files we can't parse
     }
   }
@@ -405,8 +412,11 @@ export async function parseCursorSessions(): Promise<UnifiedSession[]> {
 /**
  * Extract visible messages from a Cursor session.
  */
-export async function extractCursorContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const lines = await readNormalizedTranscript(session.originalPath);
+export async function extractCursorContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const lines = await readNormalizedTranscript(ctx, session.originalPath);
   const messages: MessageDraft[] = [];
   let model = session.model;
 

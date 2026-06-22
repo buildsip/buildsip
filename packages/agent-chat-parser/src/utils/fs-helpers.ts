@@ -3,7 +3,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { logger } from '../logger';
+import type { AgentChatParserContext } from '../types/index';
 
 export interface FindFilesOptions {
   /** Filter predicate — return true to include a file */
@@ -19,7 +19,11 @@ export interface FindFilesOptions {
  * Returns an empty array if the root doesn't exist.
  * Silently skips directories that can't be read.
  */
-export function findFiles(root: string, options: FindFilesOptions): string[] {
+export function findFiles(
+  ctx: AgentChatParserContext,
+  root: string,
+  options: FindFilesOptions,
+): string[] {
   const files: string[] = [];
 
   if (!fs.existsSync(root)) return files;
@@ -52,7 +56,7 @@ export function findFiles(root: string, options: FindFilesOptions): string[] {
         }
       }
     } catch (err) {
-      logger.debug('findFiles: cannot read directory', dir, err);
+      ctx.log.debug('findFiles: cannot read directory', dir, err);
     }
   };
 
@@ -64,7 +68,7 @@ export function findFiles(root: string, options: FindFilesOptions): string[] {
  * List immediate subdirectories of a given path.
  * Returns an empty array if the path doesn't exist.
  */
-export function listSubdirectories(dir: string): string[] {
+export function listSubdirectories(ctx: AgentChatParserContext, dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
 
   try {
@@ -83,7 +87,7 @@ export function listSubdirectories(dir: string): string[] {
       })
       .map((e) => path.join(dir, e.name));
   } catch (err) {
-    logger.debug('listSubdirectories: cannot read directory', dir, err);
+    ctx.log.debug('listSubdirectories: cannot read directory', dir, err);
     return [];
   }
 }

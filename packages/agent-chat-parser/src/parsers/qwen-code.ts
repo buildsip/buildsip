@@ -1,7 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
 import type { QwenChatRecord, QwenContent, QwenPart } from '../types/schemas';
 import { QwenChatRecordSchema } from '../types/schemas';
 import { listSubdirectories } from '../utils/fs-helpers';
@@ -14,7 +13,7 @@ import { extractRepoFromCwd, homeDir, type MessageDraft, sequenceMessages } from
 // (packages/core/src/config/storage.ts: Storage.getRuntimeBaseDir):
 //   1. QWEN_RUNTIME_DIR env var (canonical Qwen override)
 //   2. ~/.qwen (Storage.getGlobalQwenDir fallback)
-// QWEN_HOME is a continues-side override (no upstream equivalent) for
+// QWEN_HOME is a project-side override (no upstream equivalent) for
 // fixtures and sandboxed installs that want to redirect lookups at a custom
 // home dir without touching real user data. We treat its value as a home dir
 // (joining `.qwen` when not already terminated by it).
@@ -81,10 +80,15 @@ function parseTimestamp(ts: string | undefined, fallback: Date): Date {
   return Number.isNaN(d.getTime()) ? fallback : d;
 }
 
-function parseQwenChatRecord(parsed: unknown, filePath: string, lineIndex: number): QwenChatRecord | undefined {
+function parseQwenChatRecord(
+  ctx: AgentChatParserContext,
+  parsed: unknown,
+  filePath: string,
+  lineIndex: number,
+): QwenChatRecord | undefined {
   const result = QwenChatRecordSchema.safeParse(parsed);
   if (result.success) return result.data;
-  logger.debug('qwen-code: skipping invalid record at index', lineIndex, 'in', filePath);
+  ctx.log.debug('qwen-code: skipping invalid record at index', lineIndex, 'in', filePath);
   return undefined;
 }
 
@@ -180,23 +184,24 @@ function splitJsonObjects(text: string): string[] {
 }
 
 async function scanQwenJsonlFile(
+  ctx: AgentChatParserContext,
   filePath: string,
   visitor: (parsed: unknown, lineIndex: number) => 'continue' | 'stop',
 ): Promise<void> {
   if (!fs.existsSync(filePath)) return;
 
-  await scanJsonlLines(
+  await scanJsonlLines(ctx,
     filePath,
     (line, lineIndex) => {
       const chunks = splitJsonObjects(line);
       if (chunks.length === 0 && line.trim()) {
-        logger.debug('qwen-code: skipping malformed JSONL line at index', lineIndex, 'in', filePath);
+        ctx.log.debug('qwen-code: skipping malformed JSONL line at index', lineIndex, 'in', filePath);
       }
       for (const chunk of chunks) {
         try {
           if (visitor(JSON.parse(chunk), lineIndex) === 'stop') return 'stop';
         } catch (err) {
-          logger.debug('qwen-code: skipping invalid JSON object at index', lineIndex, 'in', filePath, err);
+          ctx.log.debug('qwen-code: skipping invalid JSON object at index', lineIndex, 'in', filePath, err);
         }
       }
       return 'continue';
@@ -205,10 +210,10 @@ async function scanQwenJsonlFile(
   );
 }
 
-async function readJsonlRecords(filePath: string): Promise<QwenChatRecord[]> {
+async function readJsonlRecords(ctx: AgentChatParserContext, filePath: string): Promise<QwenChatRecord[]> {
   const records: QwenChatRecord[] = [];
-  await scanQwenJsonlFile(filePath, (parsed, lineIndex) => {
-    const record = parseQwenChatRecord(parsed, filePath, lineIndex);
+  await scanQwenJsonlFile(ctx, filePath, (parsed, lineIndex) => {
+    const record = parseQwenChatRecord(ctx, parsed, filePath, lineIndex);
     if (record) records.push(record);
     return 'continue';
   });
@@ -233,13 +238,13 @@ function extractContentText(content: QwenContent | undefined): string {
 
 // ── Session file discovery ──────────────────────────────────────────────────
 
-async function findSessionFiles(): Promise<string[]> {
+async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> {
   const results: string[] = [];
   const qwenProjectsDir = getQwenProjectsDir();
 
   if (!fs.existsSync(qwenProjectsDir)) return results;
 
-  for (const projectDir of listSubdirectories(qwenProjectsDir)) {
+  for (const projectDir of listSubdirectories(ctx, qwenProjectsDir)) {
     const chatsDir = path.join(projectDir, 'chats');
     if (!fs.existsSync(chatsDir)) continue;
 
@@ -251,7 +256,7 @@ async function findSessionFiles(): Promise<string[]> {
         }
       }
     } catch (err) {
-      logger.debug('qwen-code: error reading chats dir', chatsDir, err);
+      ctx.log.debug('qwen-code: error reading chats dir', chatsDir, err);
     }
   }
 
@@ -260,12 +265,12 @@ async function findSessionFiles(): Promise<string[]> {
 
 // ── Session metadata extraction ─────────────────────────────────────────────
 
-async function extractSessionMeta(filePath: string): Promise<QwenSessionMeta | null> {
+async function extractSessionMeta(ctx: AgentChatParserContext, filePath: string): Promise<QwenSessionMeta | null> {
   let fileStat: fs.Stats;
   try {
     fileStat = await fs.promises.stat(filePath);
   } catch (err) {
-    logger.debug('qwen-code: failed to stat session file', filePath, err);
+    ctx.log.debug('qwen-code: failed to stat session file', filePath, err);
     return null;
   }
 
@@ -277,7 +282,7 @@ async function extractSessionMeta(filePath: string): Promise<QwenSessionMeta | n
   let lastTimestamp: string | undefined;
   let model: string | undefined;
 
-  await scanJsonlLines(
+  await scanJsonlLines(ctx,
     filePath,
     (line, lineIndex) => {
       const trimmed = line.trim();
@@ -292,7 +297,7 @@ async function extractSessionMeta(filePath: string): Promise<QwenSessionMeta | n
           continue;
         }
 
-        const record = parseQwenChatRecord(parsed, filePath, lineIndex);
+        const record = parseQwenChatRecord(ctx, parsed, filePath, lineIndex);
         if (!record) continue;
 
         if (!sessionId && record.sessionId) sessionId = record.sessionId;
@@ -420,13 +425,13 @@ function reconstructMainPath(records: QwenChatRecord[]): QwenChatRecord[] {
   return brokenChain || pathResult.length === 0 ? aggregated : pathResult;
 }
 
-export async function parseQwenCodeSessions(): Promise<UnifiedSession[]> {
-  const files = await findSessionFiles();
+export async function parseQwenCodeSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+  const files = await findSessionFiles(ctx);
   const sessions: UnifiedSession[] = [];
 
   for (const filePath of files) {
     try {
-      const meta = await extractSessionMeta(filePath);
+      const meta = await extractSessionMeta(ctx, filePath);
       if (!meta) continue;
 
       if (!meta.hasVisibleUserMessage) continue;
@@ -443,15 +448,18 @@ export async function parseQwenCodeSessions(): Promise<UnifiedSession[]> {
         model: meta.model,
       });
     } catch (err) {
-      logger.debug('qwen-code: skipping unparseable session', filePath, err);
+      ctx.log.debug('qwen-code: skipping unparseable session', filePath, err);
     }
   }
 
   return sessions.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
-export async function extractQwenCodeContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const records = await readJsonlRecords(session.originalPath);
+export async function extractQwenCodeContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const records = await readJsonlRecords(ctx, session.originalPath);
   const messages: MessageDraft[] = [];
   let model = session.model;
 

@@ -1,8 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
 import { extractTextFromBlocks } from '../utils/content';
 import { findFiles } from '../utils/fs-helpers';
 import { extractRepo, homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
@@ -60,8 +59,8 @@ function safeFileURLToPath(uri: string): string {
 /**
  * Find all Amp thread JSON files
  */
-function findSessionFiles(): string[] {
-  return findFiles(AMP_BASE_DIR, {
+function findSessionFiles(ctx: AgentChatParserContext): string[] {
+  return findFiles(ctx, AMP_BASE_DIR, {
     match: (entry) => entry.name.endsWith('.json'),
     recursive: false,
   });
@@ -70,23 +69,23 @@ function findSessionFiles(): string[] {
 /**
  * Read and parse a thread file.
  */
-function readThreadFile(filePath: string): { thread: AmpThread; raw: string } | null {
+function readThreadFile(ctx: AgentChatParserContext, filePath: string): { thread: AmpThread; raw: string } | null {
   try {
     const raw = fs.readFileSync(filePath, 'utf8');
     const data = JSON.parse(raw);
     if (typeof data.id !== 'string' || typeof data.created !== 'number' || !Array.isArray(data.messages)) {
-      logger.debug('amp: thread validation failed — missing id, created, or messages', filePath);
+      ctx.log.debug('amp: thread validation failed — missing id, created, or messages', filePath);
       return null;
     }
     return { thread: data as AmpThread, raw };
   } catch (err) {
-    logger.debug('amp: failed to parse thread file', filePath, err);
+    ctx.log.debug('amp: failed to parse thread file', filePath, err);
     return null;
   }
 }
 
-function parseThreadFile(filePath: string): AmpThread | null {
-  return readThreadFile(filePath)?.thread ?? null;
+function parseThreadFile(ctx: AgentChatParserContext, filePath: string): AmpThread | null {
+  return readThreadFile(ctx, filePath)?.thread ?? null;
 }
 
 function extractMessageText(message: AmpMessage): string {
@@ -139,13 +138,13 @@ function extractAmpMetadata(thread: AmpThread): Pick<UnifiedSession, 'cwd' | 're
 /**
  * Parse all Amp sessions
  */
-export async function parseAmpSessions(): Promise<UnifiedSession[]> {
-  const files = findSessionFiles();
+export async function parseAmpSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+  const files = findSessionFiles(ctx);
   const sessions: UnifiedSession[] = [];
 
   for (const filePath of files) {
     try {
-      const parsed = readThreadFile(filePath);
+      const parsed = readThreadFile(ctx, filePath);
       if (!parsed || !parsed.thread.id) continue;
       const { thread } = parsed;
 
@@ -167,7 +166,7 @@ export async function parseAmpSessions(): Promise<UnifiedSession[]> {
         model: extractModel(thread),
       });
     } catch (err) {
-      logger.debug('amp: skipping unparseable thread', filePath, err);
+      ctx.log.debug('amp: skipping unparseable thread', filePath, err);
     }
   }
 
@@ -177,8 +176,11 @@ export async function parseAmpSessions(): Promise<UnifiedSession[]> {
 /**
  * Extract visible messages from an Amp session.
  */
-export async function extractAmpContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const thread = parseThreadFile(session.originalPath);
+export async function extractAmpContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const thread = parseThreadFile(ctx, session.originalPath);
   const messages: MessageDraft[] = [];
 
   if (thread) {

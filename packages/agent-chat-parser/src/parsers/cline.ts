@@ -1,8 +1,7 @@
 import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
 import {
   cleanSummary,
   extractRepoFromCwd,
@@ -24,13 +23,13 @@ const CLINE_EXTENSIONS = [
     id: 'saoudrizwan.claude-dev',
     source: 'cline',
     customStorageSettingKeys: ['cline.customStoragePath'],
-    customStorageEnvKeys: ['CLINE_STORAGE_PATH', 'CONTINUES_CLINE_STORAGE_PATH'],
+    customStorageEnvKeys: ['CLINE_STORAGE_PATH', 'BUILDSIP_CLINE_STORAGE_PATH'],
   },
   {
     id: 'rooveterinaryinc.roo-cline',
     source: 'roo-code',
     customStorageSettingKeys: ['roo-cline.customStoragePath'],
-    customStorageEnvKeys: ['ROO_CODE_STORAGE_PATH', 'ROO_CLINE_STORAGE_PATH', 'CONTINUES_ROO_CODE_STORAGE_PATH'],
+    customStorageEnvKeys: ['ROO_CODE_STORAGE_PATH', 'ROO_CLINE_STORAGE_PATH', 'BUILDSIP_ROO_CODE_STORAGE_PATH'],
   },
   {
     id: 'roo-code.roo-cline',
@@ -42,7 +41,7 @@ const CLINE_EXTENSIONS = [
     id: 'kilocode.kilo-code',
     source: 'kilo-code',
     customStorageSettingKeys: ['kilo-code.customStoragePath'],
-    customStorageEnvKeys: ['KILO_CODE_STORAGE_PATH', 'CONTINUES_KILO_CODE_STORAGE_PATH'],
+    customStorageEnvKeys: ['KILO_CODE_STORAGE_PATH', 'BUILDSIP_KILO_CODE_STORAGE_PATH'],
   },
 ] as const;
 
@@ -336,17 +335,21 @@ function stripJsonComments(content: string): string {
   return result.replace(/,\s*([}\]])/gu, '$1');
 }
 
-async function readSettings(settingsPath: string): Promise<Record<string, unknown>> {
+async function readSettings(ctx: AgentChatParserContext, settingsPath: string): Promise<Record<string, unknown>> {
   try {
     const parsed: unknown = JSON.parse(stripJsonComments(await fs.readFile(settingsPath, 'utf8')));
     return isRecord(parsed) ? parsed : {};
   } catch (err) {
-    logger.debug(`cline: cannot read settings ${settingsPath}`, err);
+    ctx.log.debug(`cline: cannot read settings ${settingsPath}`, err);
     return {};
   }
 }
 
-async function discoverCustomStorageRoots(ext: ClineExtension, globalStorageBases: string[]): Promise<string[]> {
+async function discoverCustomStorageRoots(
+  ctx: AgentChatParserContext,
+  ext: ClineExtension,
+  globalStorageBases: string[],
+): Promise<string[]> {
   const roots: string[] = [];
   const addRoot = (value: string): void => {
     const expanded = expandHomePath(value);
@@ -359,7 +362,7 @@ async function discoverCustomStorageRoots(ext: ClineExtension, globalStorageBase
   }
 
   for (const base of globalStorageBases) {
-    const settings = await readSettings(settingsPathForGlobalStorage(base));
+    const settings = await readSettings(ctx, settingsPathForGlobalStorage(base));
     for (const settingKey of ext.customStorageSettingKeys) {
       const value = readString(settings, settingKey);
       if (value) addRoot(value);
@@ -369,7 +372,12 @@ async function discoverCustomStorageRoots(ext: ClineExtension, globalStorageBase
   return uniquePaths(roots);
 }
 
-async function findDirsNamed(root: string, dirName: string, maxDepth: number): Promise<string[]> {
+async function findDirsNamed(
+  ctx: AgentChatParserContext,
+  root: string,
+  dirName: string,
+  maxDepth: number,
+): Promise<string[]> {
   const found: string[] = [];
 
   async function walk(current: string, depth: number): Promise<void> {
@@ -379,7 +387,7 @@ async function findDirsNamed(root: string, dirName: string, maxDepth: number): P
     try {
       entries = await fs.readdir(current, { withFileTypes: true });
     } catch (err) {
-      logger.debug(`cline: cannot scan ${current}`, err);
+      ctx.log.debug(`cline: cannot scan ${current}`, err);
       return;
     }
 
@@ -398,10 +406,10 @@ async function findDirsNamed(root: string, dirName: string, maxDepth: number): P
   return found;
 }
 
-async function getJetBrainsGlobalStorageBases(): Promise<string[]> {
+async function getJetBrainsGlobalStorageBases(ctx: AgentChatParserContext): Promise<string[]> {
   const bases: string[] = [];
   for (const root of getJetBrainsRoots()) {
-    bases.push(...(await findDirsNamed(root, 'globalStorage', 3)));
+    bases.push(...(await findDirsNamed(ctx, root, 'globalStorage', 3)));
   }
   return uniquePaths(bases);
 }
@@ -414,7 +422,10 @@ function getClineCliStorageRoots(): string[] {
   return uniquePaths(roots);
 }
 
-async function getTaskRoots(filterSource?: ClineSource): Promise<TaskRoot[]> {
+async function getTaskRoots(
+  ctx: AgentChatParserContext,
+  filterSource?: ClineSource,
+): Promise<TaskRoot[]> {
   const roots: TaskRoot[] = [];
 
   if (!filterSource || filterSource === 'cline') {
@@ -427,7 +438,10 @@ async function getTaskRoots(filterSource?: ClineSource): Promise<TaskRoot[]> {
     }
   }
 
-  const globalStorageBases = uniquePaths([...getGlobalStorageBases(), ...(await getJetBrainsGlobalStorageBases())]);
+  const globalStorageBases = uniquePaths([
+    ...getGlobalStorageBases(),
+    ...(await getJetBrainsGlobalStorageBases(ctx)),
+  ]);
   for (const base of globalStorageBases) {
     for (const ext of CLINE_EXTENSIONS) {
       if (filterSource && ext.source !== filterSource) continue;
@@ -442,7 +456,7 @@ async function getTaskRoots(filterSource?: ClineSource): Promise<TaskRoot[]> {
 
   for (const ext of CLINE_EXTENSIONS) {
     if (filterSource && ext.source !== filterSource) continue;
-    for (const storageRoot of await discoverCustomStorageRoots(ext, globalStorageBases)) {
+    for (const storageRoot of await discoverCustomStorageRoots(ctx, ext, globalStorageBases)) {
       roots.push({
         tasksRoot: path.join(storageRoot, 'tasks'),
         storageRoot,
@@ -460,7 +474,7 @@ async function getTaskRoots(filterSource?: ClineSource): Promise<TaskRoot[]> {
   });
 }
 
-async function taskHasReadableData(taskDir: string): Promise<boolean> {
+async function taskHasReadableData(ctx: AgentChatParserContext, taskDir: string): Promise<boolean> {
   for (const fileName of TASK_SIGNAL_FILES) {
     if (await pathExists(path.join(taskDir, fileName))) return true;
   }
@@ -471,8 +485,11 @@ async function taskHasReadableData(taskDir: string): Promise<boolean> {
  * Discover all task directories for a given extension across all IDE locations.
  * Returns tuples of (task-id directory path, extension source label).
  */
-async function discoverTaskDirs(filterSource?: ClineSource): Promise<TaskEntry[]> {
-  const taskRoots = await getTaskRoots(filterSource);
+async function discoverTaskDirs(
+  ctx: AgentChatParserContext,
+  filterSource?: ClineSource,
+): Promise<TaskEntry[]> {
+  const taskRoots = await getTaskRoots(ctx, filterSource);
   const results: TaskEntry[] = [];
 
   for (const { tasksRoot, storageRoot, source } of taskRoots) {
@@ -483,12 +500,12 @@ async function discoverTaskDirs(filterSource?: ClineSource): Promise<TaskEntry[]
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const taskDir = path.join(tasksRoot, entry.name);
-        if (await taskHasReadableData(taskDir)) {
+        if (await taskHasReadableData(ctx, taskDir)) {
           results.push({ taskDir, taskId: entry.name, storageRoot, source });
         }
       }
     } catch (err) {
-      logger.debug(`cline: cannot read tasks dir ${tasksRoot}`, err);
+      ctx.log.debug(`cline: cannot read tasks dir ${tasksRoot}`, err);
     }
   }
 
@@ -561,7 +578,7 @@ async function discoverKiloDbPaths(): Promise<string[]> {
  * handle throws). Read-only is non-negotiable: this parser must never mutate
  * a user's `kilo.db`.
  */
-function openKiloDb(dbPath: string): { db: SqliteDatabase; close: () => void } | null {
+function openKiloDb(ctx: AgentChatParserContext, dbPath: string): { db: SqliteDatabase; close: () => void } | null {
   try {
     const sqliteModule = require('node:sqlite') as {
       DatabaseSync: new (database: string, options?: { open?: boolean; readOnly?: boolean }) => SqliteDatabase;
@@ -569,12 +586,16 @@ function openKiloDb(dbPath: string): { db: SqliteDatabase; close: () => void } |
     const db = new sqliteModule.DatabaseSync(dbPath, { open: true, readOnly: true });
     return { db, close: () => db.close() };
   } catch (err) {
-    logger.debug('kilo-code: failed to open SQLite database', dbPath, err);
+    ctx.log.debug('kilo-code: failed to open SQLite database', dbPath, err);
     return null;
   }
 }
 
-function tableColumns(db: SqliteDatabase, tableName: 'session' | 'message' | 'part' | 'project'): Set<string> {
+function tableColumns(
+  ctx: AgentChatParserContext,
+  db: SqliteDatabase,
+  tableName: 'session' | 'message' | 'part' | 'project',
+): Set<string> {
   try {
     const rows = db.prepare(`PRAGMA table_info(${tableName})`).all();
     const columns = new Set<string>();
@@ -583,7 +604,7 @@ function tableColumns(db: SqliteDatabase, tableName: 'session' | 'message' | 'pa
     }
     return columns;
   } catch (err) {
-    logger.debug('kilo-code: failed to inspect SQLite table', tableName, err);
+    ctx.log.debug('kilo-code: failed to inspect SQLite table', tableName, err);
     return new Set();
   }
 }
@@ -592,12 +613,12 @@ function missingColumns(columns: Set<string>, required: readonly string[]): stri
   return required.filter((column) => !columns.has(column));
 }
 
-function inspectKiloDbSchema(db: SqliteDatabase): KiloDbSchema {
+function inspectKiloDbSchema(ctx: AgentChatParserContext, db: SqliteDatabase): KiloDbSchema {
   const schema: KiloDbSchema = {
-    session: tableColumns(db, 'session'),
-    message: tableColumns(db, 'message'),
-    part: tableColumns(db, 'part'),
-    project: tableColumns(db, 'project'),
+    session: tableColumns(ctx, db, 'session'),
+    message: tableColumns(ctx, db, 'message'),
+    part: tableColumns(ctx, db, 'part'),
+    project: tableColumns(ctx, db, 'project'),
     supported: true,
     warnings: [],
   };
@@ -627,9 +648,9 @@ function inspectKiloDbSchema(db: SqliteDatabase): KiloDbSchema {
   return schema;
 }
 
-function warnKiloDbFidelity(dbPath: string, warnings: string[]): void {
+function warnKiloDbFidelity(ctx: AgentChatParserContext, dbPath: string, warnings: string[]): void {
   if (warnings.length === 0) return;
-  logger.warn('kilo-code: skipping SQLite database with unsupported schema', dbPath, warnings.join(' '));
+  ctx.log.warn('kilo-code: skipping SQLite database with unsupported schema', dbPath, warnings.join(' '));
 }
 
 // ── Message Parsing ─────────────────────────────────────────────────────────
@@ -765,19 +786,26 @@ interface ReadResult<T> {
   warning?: string;
 }
 
-async function readJson(filePath: string, label: string): Promise<{ parsed?: unknown; warning?: string }> {
+async function readJson(
+  ctx: AgentChatParserContext,
+  filePath: string,
+  label: string,
+): Promise<{ parsed?: unknown; warning?: string }> {
   if (!(await pathExists(filePath))) return {};
   try {
     return { parsed: JSON.parse(await fs.readFile(filePath, 'utf8')) };
   } catch (err) {
-    logger.debug(`cline: failed to parse ${label}`, filePath, err);
+    ctx.log.debug(`cline: failed to parse ${label}`, filePath, err);
     return { warning: `${label} could not be parsed (invalid JSON)` };
   }
 }
 
 /** Read and parse ui_messages.json. Returns an empty array on failure. */
-async function readUiMessages(filePath: string): Promise<ReadResult<ClineRawMessage[]>> {
-  const { parsed, warning } = await readJson(filePath, UI_MESSAGES_FILE);
+async function readUiMessages(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<ReadResult<ClineRawMessage[]>> {
+  const { parsed, warning } = await readJson(ctx, filePath, UI_MESSAGES_FILE);
   if (warning) return { value: [], warning };
   if (parsed === undefined) return { value: [] };
   if (!Array.isArray(parsed)) {
@@ -791,8 +819,11 @@ async function readUiMessages(filePath: string): Promise<ReadResult<ClineRawMess
   };
 }
 
-async function readApiConversationHistory(filePath: string): Promise<ReadResult<ClineApiMessage[]>> {
-  const { parsed, warning } = await readJson(filePath, API_CONVERSATION_HISTORY_FILE);
+async function readApiConversationHistory(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<ReadResult<ClineApiMessage[]>> {
+  const { parsed, warning } = await readJson(ctx, filePath, API_CONVERSATION_HISTORY_FILE);
   if (warning) return { value: [], warning };
   if (parsed === undefined) return { value: [] };
   if (!Array.isArray(parsed)) {
@@ -820,11 +851,11 @@ interface TaskHistoryReadResult {
   warnings: string[];
 }
 
-async function readTaskHistoryMap(paths: string[]): Promise<TaskHistoryReadResult> {
+async function readTaskHistoryMap(ctx: AgentChatParserContext, paths: string[]): Promise<TaskHistoryReadResult> {
   const itemsById: TaskHistoryMap = new Map();
   const warnings: string[] = [];
   for (const filePath of paths) {
-    const { parsed, warning } = await readJson(filePath, TASK_HISTORY_FILE);
+    const { parsed, warning } = await readJson(ctx, filePath, TASK_HISTORY_FILE);
     if (warning) warnings.push(warning);
     for (const item of taskHistoryArray(parsed).map(normalizeTaskHistoryItem)) {
       if (item && !itemsById.has(item.id)) itemsById.set(item.id, item);
@@ -834,10 +865,11 @@ async function readTaskHistoryMap(paths: string[]): Promise<TaskHistoryReadResul
 }
 
 async function readTaskHistoryItemFile(
+  ctx: AgentChatParserContext,
   filePath: string,
   taskId: string,
 ): Promise<{ item?: ClineTaskHistoryItem; warning?: string }> {
-  const { parsed, warning } = await readJson(filePath, HISTORY_ITEM_FILE);
+  const { parsed, warning } = await readJson(ctx, filePath, HISTORY_ITEM_FILE);
   if (warning) return { warning };
   if (parsed === undefined) return {};
 
@@ -849,10 +881,11 @@ async function readTaskHistoryItemFile(
 }
 
 async function readTaskHistoryItem(
+  ctx: AgentChatParserContext,
   paths: string[],
   taskId: string,
 ): Promise<{ item?: ClineTaskHistoryItem; warnings: string[] }> {
-  const { map, warnings } = await readTaskHistoryMap(paths);
+  const { map, warnings } = await readTaskHistoryMap(ctx, paths);
   return { item: map.get(taskId), warnings };
 }
 
@@ -887,6 +920,7 @@ function inferStorageRootFromTaskDir(taskDir: string): string {
 }
 
 async function loadTaskData(
+  ctx: AgentChatParserContext,
   taskDir: string,
   storageRoot: string,
   taskId: string,
@@ -894,12 +928,12 @@ async function loadTaskData(
 ): Promise<LoadedTaskData> {
   const files = taskFilesFromDir(taskDir, storageRoot);
   const [uiResult, apiResult, perTaskHistoryResult, historyResult] = await Promise.all([
-    readUiMessages(files.uiMessages),
-    readApiConversationHistory(files.apiConversationHistory),
-    readTaskHistoryItemFile(files.historyItem, taskId),
+    readUiMessages(ctx, files.uiMessages),
+    readApiConversationHistory(ctx, files.apiConversationHistory),
+    readTaskHistoryItemFile(ctx, files.historyItem, taskId),
     cachedHistory
       ? Promise.resolve({ item: cachedHistory.map.get(taskId), warnings: cachedHistory.warnings })
-      : readTaskHistoryItem(files.taskHistoryCandidates, taskId),
+      : readTaskHistoryItem(ctx, files.taskHistoryCandidates, taskId),
   ]);
 
   for (const warning of [
@@ -908,7 +942,7 @@ async function loadTaskData(
     perTaskHistoryResult.warning,
     ...historyResult.warnings,
   ]) {
-    if (warning) logger.debug('cline: companion file parse warning', warning);
+    if (warning) ctx.log.debug('cline: companion file parse warning', warning);
   }
 
   return {
@@ -919,9 +953,13 @@ async function loadTaskData(
   };
 }
 
-async function loadTaskDataFromOriginalPath(originalPath: string, taskId: string): Promise<LoadedTaskData> {
+async function loadTaskDataFromOriginalPath(
+  ctx: AgentChatParserContext,
+  originalPath: string,
+  taskId: string,
+): Promise<LoadedTaskData> {
   const taskDir = inferTaskDirFromOriginalPath(originalPath);
-  return loadTaskData(taskDir, inferStorageRootFromTaskDir(taskDir), taskId);
+  return loadTaskData(ctx, taskDir, inferStorageRootFromTaskDir(taskDir), taskId);
 }
 
 function messageText(msg: ClineRawMessage): string | undefined {
@@ -960,14 +998,18 @@ function isApiRequestMetadata(msg: ClineRawMessage): boolean {
   return msg.type === 'say' && (msg.say === 'api_req_started' || msg.say === 'api_req_finished');
 }
 
-function parseJsonRecord(value: unknown, context: string): Record<string, unknown> | null {
+function parseJsonRecord(
+  ctx: AgentChatParserContext,
+  value: unknown,
+  context: string,
+): Record<string, unknown> | null {
   if (isRecord(value)) return value;
   if (typeof value !== 'string') return null;
   try {
     const parsed: unknown = JSON.parse(value);
     return isRecord(parsed) ? parsed : null;
   } catch (err) {
-    logger.debug('kilo-code: failed to parse SQLite JSON', context, err);
+    ctx.log.debug('kilo-code: failed to parse SQLite JSON', context, err);
     return null;
   }
 }
@@ -1032,7 +1074,12 @@ interface KiloDbDiscoveryInfo {
  * unified session card). Avoids the N+1 message/part scan that the
  * full extraction path requires, so listing remains fast on large DBs.
  */
-function readKiloDbDiscoveryInfo(db: SqliteDatabase, schema: KiloDbSchema, sessionId: string): KiloDbDiscoveryInfo {
+function readKiloDbDiscoveryInfo(
+  ctx: AgentChatParserContext,
+  db: SqliteDatabase,
+  schema: KiloDbSchema,
+  sessionId: string,
+): KiloDbDiscoveryInfo {
   const messageColumns = selectColumns(schema.message, ['id', 'time_created', 'data']);
   let msgRows: unknown[];
   try {
@@ -1042,7 +1089,7 @@ function readKiloDbDiscoveryInfo(db: SqliteDatabase, schema: KiloDbSchema, sessi
       )
       .all(sessionId);
   } catch (err) {
-    logger.debug('kilo-code: failed to read message metadata for discovery', sessionId, err);
+    ctx.log.debug('kilo-code: failed to read message metadata for discovery', sessionId, err);
     return { rowCount: 0, firstUserMessage: '' };
   }
 
@@ -1057,7 +1104,7 @@ function readKiloDbDiscoveryInfo(db: SqliteDatabase, schema: KiloDbSchema, sessi
     const messageId = readString(msgRow, 'id');
     if (!messageId) continue;
 
-    const messageData = parseJsonRecord(msgRow.data, `message:${messageId}`);
+    const messageData = parseJsonRecord(ctx, msgRow.data, `message:${messageId}`);
     if (!messageData) continue;
 
     const role = roleFromMessageData(messageData);
@@ -1080,7 +1127,9 @@ function readKiloDbDiscoveryInfo(db: SqliteDatabase, schema: KiloDbSchema, sessi
     if (firstUserMessageId && firstAssistantMessageId && model) break;
   }
 
-  const firstUserMessage = firstUserMessageId ? readKiloDbPartsContent(db, schema, firstUserMessageId) : '';
+  const firstUserMessage = firstUserMessageId
+    ? readKiloDbPartsContent(ctx, db, schema, firstUserMessageId)
+    : '';
 
   return {
     rowCount: msgRows.length,
@@ -1092,7 +1141,12 @@ function readKiloDbDiscoveryInfo(db: SqliteDatabase, schema: KiloDbSchema, sessi
 }
 
 /** Read and concatenate the text content of all parts for a single message. */
-function readKiloDbPartsContent(db: SqliteDatabase, schema: KiloDbSchema, messageId: string): string {
+function readKiloDbPartsContent(
+  ctx: AgentChatParserContext,
+  db: SqliteDatabase,
+  schema: KiloDbSchema,
+  messageId: string,
+): string {
   const partColumns = selectColumns(schema.part, ['id', 'message_id', 'time_created', 'data']);
   let partRows: unknown[];
   try {
@@ -1102,14 +1156,14 @@ function readKiloDbPartsContent(db: SqliteDatabase, schema: KiloDbSchema, messag
       )
       .all(messageId);
   } catch (err) {
-    logger.debug('kilo-code: failed to read part rows', messageId, err);
+    ctx.log.debug('kilo-code: failed to read part rows', messageId, err);
     return '';
   }
 
   const contentParts: string[] = [];
   for (const partRow of partRows) {
     if (!isRecord(partRow)) continue;
-    const partData = parseJsonRecord(partRow.data, `part:${messageId}`);
+    const partData = parseJsonRecord(ctx, partRow.data, `part:${messageId}`);
     if (!partData) continue;
     const content = extractKiloPartContent(partData).trim();
     if (content) contentParts.push(content);
@@ -1117,7 +1171,12 @@ function readKiloDbPartsContent(db: SqliteDatabase, schema: KiloDbSchema, messag
   return contentParts.join('\n').trim();
 }
 
-function readKiloDbMessagesFromHandle(db: SqliteDatabase, schema: KiloDbSchema, sessionId: string): KiloDbMessageRead {
+function readKiloDbMessagesFromHandle(
+  ctx: AgentChatParserContext,
+  db: SqliteDatabase,
+  schema: KiloDbSchema,
+  sessionId: string,
+): KiloDbMessageRead {
   const messageColumns = selectColumns(schema.message, ['id', 'session_id', 'time_created', 'data']);
   const partColumns = selectColumns(schema.part, ['id', 'message_id', 'time_created', 'data']);
   const msgRows = db
@@ -1136,7 +1195,7 @@ function readKiloDbMessagesFromHandle(db: SqliteDatabase, schema: KiloDbSchema, 
     const messageId = readString(msgRow, 'id');
     if (!messageId) continue;
 
-    const messageData = parseJsonRecord(msgRow.data, `message:${messageId}`);
+    const messageData = parseJsonRecord(ctx, msgRow.data, `message:${messageId}`);
     if (!messageData) continue;
 
     const role = roleFromMessageData(messageData);
@@ -1161,7 +1220,7 @@ function readKiloDbMessagesFromHandle(db: SqliteDatabase, schema: KiloDbSchema, 
     const contentParts: string[] = [];
     for (const partRow of partRows) {
       if (!isRecord(partRow)) continue;
-      const partData = parseJsonRecord(partRow.data, `part:${messageId}`);
+      const partData = parseJsonRecord(ctx, partRow.data, `part:${messageId}`);
       if (!partData) continue;
 
       const content = extractKiloPartContent(partData).trim();
@@ -1175,13 +1234,18 @@ function readKiloDbMessagesFromHandle(db: SqliteDatabase, schema: KiloDbSchema, 
   return { messages, model, rowCount: msgRows.length, firstTimestamp, lastTimestamp };
 }
 
-function getProjectWorktree(db: SqliteDatabase, schema: KiloDbSchema, projectId: string | undefined): string {
+function getProjectWorktree(
+  ctx: AgentChatParserContext,
+  db: SqliteDatabase,
+  schema: KiloDbSchema,
+  projectId: string | undefined,
+): string {
   if (!projectId || !schema.project.has('id') || !schema.project.has('worktree')) return '';
   try {
     const row = db.prepare('SELECT worktree FROM project WHERE id = ?').get(projectId);
     return isRecord(row) ? (readString(row, 'worktree') ?? '') : '';
   } catch (err) {
-    logger.debug('kilo-code: failed to read SQLite project row', projectId, err);
+    ctx.log.debug('kilo-code: failed to read SQLite project row', projectId, err);
     return '';
   }
 }
@@ -1417,7 +1481,7 @@ function findCwdInValue(value: unknown, depth = 0): string | undefined {
   return undefined;
 }
 
-function extractCwdFromUiApiEvents(messages: ClineRawMessage[]): string | undefined {
+function extractCwdFromUiApiEvents(ctx: AgentChatParserContext, messages: ClineRawMessage[]): string | undefined {
   for (const message of messages) {
     if (!isApiRequestMetadata(message) || !message.text) continue;
     try {
@@ -1425,7 +1489,7 @@ function extractCwdFromUiApiEvents(messages: ClineRawMessage[]): string | undefi
       const cwd = findCwdInValue(parsed);
       if (cwd) return cwd;
     } catch (err) {
-      logger.debug('cline: skipping malformed API request metadata while extracting cwd', err);
+      ctx.log.debug('cline: skipping malformed API request metadata while extracting cwd', err);
     }
   }
   return undefined;
@@ -1465,16 +1529,17 @@ function normalizeCwd(value: string): string {
   return value.replace(/\\/g, '/');
 }
 
-function resolveCwd(data: LoadedTaskData): string {
+function resolveCwd(ctx: AgentChatParserContext, data: LoadedTaskData): string {
   const raw =
     data.taskHistoryItem?.cwdOnTaskInitialization ??
-    extractCwdFromUiApiEvents(data.uiMessages) ??
+    extractCwdFromUiApiEvents(ctx, data.uiMessages) ??
     extractCwdFromApiHistory(data.apiMessages) ??
     '';
   return raw ? normalizeCwd(raw) : '';
 }
 
 async function existingCompanionStats(
+  ctx: AgentChatParserContext,
   files: TaskFiles,
 ): Promise<Array<{ filePath: string; size: number; birthtime: Date; mtime: Date }>> {
   const stats: Array<{ filePath: string; size: number; birthtime: Date; mtime: Date }> = [];
@@ -1484,7 +1549,7 @@ async function existingCompanionStats(
       const fileStats = await fs.stat(filePath);
       stats.push({ filePath, size: fileStats.size, birthtime: fileStats.birthtime, mtime: fileStats.mtime });
     } catch (err) {
-      logger.debug(`cline: cannot stat companion file ${filePath}`, err);
+      ctx.log.debug(`cline: cannot stat companion file ${filePath}`, err);
     }
   }
   return stats;
@@ -1508,8 +1573,11 @@ function messageTimestamps(data: LoadedTaskData): number[] {
  * Discover and parse sessions for all Cline-family extensions, optionally
  * filtering to a single source variant.
  */
-async function parseSessionsForSource(filterSource?: ClineSource): Promise<UnifiedSession[]> {
-  const taskEntries = await discoverTaskDirs(filterSource);
+async function parseSessionsForSource(
+  ctx: AgentChatParserContext,
+  filterSource?: ClineSource,
+): Promise<UnifiedSession[]> {
+  const taskEntries = await discoverTaskDirs(ctx, filterSource);
   // Per-call cache. Shared across sessions under the same `storageRoot` so
   // `taskHistory.json` is read once per discovery pass; new calls always
   // re-read so live edits to taskHistory.json take effect immediately.
@@ -1521,11 +1589,11 @@ async function parseSessionsForSource(filterSource?: ClineSource): Promise<Unifi
       const storageRootKey = path.resolve(storageRoot);
       let cachedHistory = taskHistoryCache.get(storageRootKey);
       if (!cachedHistory) {
-        cachedHistory = readTaskHistoryMap(taskHistoryCandidatesFromStorageRoot(storageRoot));
+        cachedHistory = readTaskHistoryMap(ctx, taskHistoryCandidatesFromStorageRoot(storageRoot));
         taskHistoryCache.set(storageRootKey, cachedHistory);
       }
 
-      const data = await loadTaskData(taskDir, storageRoot, taskId, await cachedHistory);
+      const data = await loadTaskData(ctx, taskDir, storageRoot, taskId, await cachedHistory);
       if (data.uiMessages.length === 0 && data.apiMessages.length === 0 && !data.taskHistoryItem) continue;
 
       const firstUserMsg =
@@ -1535,7 +1603,7 @@ async function parseSessionsForSource(filterSource?: ClineSource): Promise<Unifi
         '';
       if (!cleanSummary(firstUserMsg)) continue; // Skip sessions with no real user message
 
-      const stats = await existingCompanionStats(data.files);
+      const stats = await existingCompanionStats(ctx, data.files);
       if (stats.length === 0) continue;
 
       // Derive timestamps: prefer message/history timestamps, fall back to file stats.
@@ -1548,7 +1616,7 @@ async function parseSessionsForSource(filterSource?: ClineSource): Promise<Unifi
         timestamps.length > 0
           ? new Date(Math.max(...timestamps))
           : new Date(Math.max(...stats.map((stat) => stat.mtime.getTime())));
-      const cwd = resolveCwd(data);
+      const cwd = resolveCwd(ctx, data);
       const model = resolveModel(data);
 
       sessions.push({
@@ -1562,25 +1630,25 @@ async function parseSessionsForSource(filterSource?: ClineSource): Promise<Unifi
         originalPath: stats[0]!.filePath,
       });
     } catch (err) {
-      logger.debug(`cline: skipping unparseable task ${taskId}`, err);
+      ctx.log.debug(`cline: skipping unparseable task ${taskId}`, err);
     }
   }
 
   return sessions.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
-async function parseKiloDbSessions(): Promise<UnifiedSession[]> {
+async function parseKiloDbSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
   const sessionsById = new Map<string, UnifiedSession>();
 
   for (const dbPath of await discoverKiloDbPaths()) {
-    const handle = openKiloDb(dbPath);
+    const handle = openKiloDb(ctx, dbPath);
     if (!handle) continue;
 
     const { db, close } = handle;
     try {
-      const schema = inspectKiloDbSchema(db);
+      const schema = inspectKiloDbSchema(ctx, db);
       if (!schema.supported) {
-        warnKiloDbFidelity(dbPath, schema.warnings);
+        warnKiloDbFidelity(ctx, dbPath, schema.warnings);
         continue;
       }
 
@@ -1603,11 +1671,11 @@ async function parseKiloDbSessions(): Promise<UnifiedSession[]> {
         const id = readString(row, 'id');
         if (!id) continue;
 
-        const discoveryInfo = readKiloDbDiscoveryInfo(db, schema, id);
+        const discoveryInfo = readKiloDbDiscoveryInfo(ctx, db, schema, id);
         if (discoveryInfo.rowCount === 0) continue;
 
         const projectId = readString(row, 'project_id');
-        const cwd = readString(row, 'directory') || getProjectWorktree(db, schema, projectId);
+        const cwd = readString(row, 'directory') || getProjectWorktree(ctx, db, schema, projectId);
         const createdAt = timestampFromValue(row.time_created) ?? discoveryInfo.firstTimestamp ?? dbStats.birthtime;
         const updatedAt = timestampFromValue(row.time_updated) ?? discoveryInfo.lastTimestamp ?? dbStats.mtime;
 
@@ -1628,7 +1696,7 @@ async function parseKiloDbSessions(): Promise<UnifiedSession[]> {
         }
       }
     } catch (err) {
-      logger.debug('kilo-code: failed to parse SQLite sessions', dbPath, err);
+      ctx.log.debug('kilo-code: failed to parse SQLite sessions', dbPath, err);
     } finally {
       close();
     }
@@ -1637,12 +1705,12 @@ async function parseKiloDbSessions(): Promise<UnifiedSession[]> {
   return Array.from(sessionsById.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
-async function parseKiloSessionsAll(): Promise<UnifiedSession[]> {
+async function parseKiloSessionsAll(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
   const sessionsById = new Map<string, UnifiedSession>();
-  for (const session of await parseKiloDbSessions()) {
+  for (const session of await parseKiloDbSessions(ctx)) {
     sessionsById.set(session.id, session);
   }
-  for (const session of await parseSessionsForSource('kilo-code')) {
+  for (const session of await parseSessionsForSource(ctx, 'kilo-code')) {
     const existing = sessionsById.get(session.id);
     if (!existing || existing.updatedAt.getTime() < session.updatedAt.getTime()) {
       sessionsById.set(session.id, session);
@@ -1654,14 +1722,17 @@ async function parseKiloSessionsAll(): Promise<UnifiedSession[]> {
 // ── Context Extraction (shared) ─────────────────────────────────────────────
 
 /** Extract visible messages for all three Cline-family variants. */
-async function parseMessagesShared(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const data = await loadTaskDataFromOriginalPath(session.originalPath, session.id);
+async function parseMessagesShared(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const data = await loadTaskDataFromOriginalPath(ctx, session.originalPath, session.id);
 
   const uiConversation = buildConversation(data.uiMessages);
   const apiConversation = buildApiConversation(data.apiMessages);
   const allConversation = uiConversation.length > 0 ? uiConversation : apiConversation;
   const model = resolveModel(data);
-  const cwd = resolveCwd(data) || session.cwd;
+  const cwd = resolveCwd(ctx, data) || session.cwd;
   const sessionWithMetadata: UnifiedSession = {
     ...session,
     ...(cwd ? { cwd, repo: session.repo || extractRepoFromCwd(cwd) } : {}),
@@ -1686,21 +1757,24 @@ function emptyKiloDbConversation(session: UnifiedSession): ParsedAgentConversati
   return { session, messages: [] };
 }
 
-async function extractKiloDbContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const handle = openKiloDb(session.originalPath);
+async function extractKiloDbContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const handle = openKiloDb(ctx, session.originalPath);
   if (!handle) {
     return emptyKiloDbConversation(session);
   }
 
   const { db, close } = handle;
   try {
-    const schema = inspectKiloDbSchema(db);
+    const schema = inspectKiloDbSchema(ctx, db);
     if (!schema.supported) {
-      warnKiloDbFidelity(session.originalPath, schema.warnings);
+      warnKiloDbFidelity(ctx, session.originalPath, schema.warnings);
       return emptyKiloDbConversation(session);
     }
 
-    const messageRead = readKiloDbMessagesFromHandle(db, schema, session.id);
+    const messageRead = readKiloDbMessagesFromHandle(ctx, db, schema, session.id);
     const enrichedSession = messageRead.model ? { ...session, model: messageRead.model } : session;
 
     return {
@@ -1708,7 +1782,7 @@ async function extractKiloDbContext(session: UnifiedSession): Promise<ParsedAgen
       messages: sequenceMessages(messageRead.messages),
     };
   } catch (err) {
-    logger.debug('kilo-code: failed to extract SQLite context', session.originalPath, session.id, err);
+    ctx.log.debug('kilo-code: failed to extract SQLite context', session.originalPath, session.id, err);
     return emptyKiloDbConversation(session);
   } finally {
     close();
@@ -1718,36 +1792,45 @@ async function extractKiloDbContext(session: UnifiedSession): Promise<ParsedAgen
 // ── Public API: Cline ───────────────────────────────────────────────────────
 
 /** Discover sessions for Cline only */
-export async function parseClineSessions(): Promise<UnifiedSession[]> {
-  return parseSessionsForSource('cline');
+export async function parseClineSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+  return parseSessionsForSource(ctx, 'cline');
 }
 
 /** Extract visible messages from a Cline session */
-export async function extractClineContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  return parseMessagesShared(session);
+export async function extractClineContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  return parseMessagesShared(ctx, session);
 }
 
 // ── Public API: Roo Code ────────────────────────────────────────────────────
 
 /** Discover sessions for Roo Code only */
-export async function parseRooCodeSessions(): Promise<UnifiedSession[]> {
-  return parseSessionsForSource('roo-code');
+export async function parseRooCodeSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+  return parseSessionsForSource(ctx, 'roo-code');
 }
 
 /** Extract visible messages from a Roo Code session */
-export async function extractRooCodeContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  return parseMessagesShared(session);
+export async function extractRooCodeContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  return parseMessagesShared(ctx, session);
 }
 
 // ── Public API: Kilo Code ───────────────────────────────────────────────────
 
 /** Discover sessions for Kilo Code only */
-export async function parseKiloCodeSessions(): Promise<UnifiedSession[]> {
-  return parseKiloSessionsAll();
+export async function parseKiloCodeSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+  return parseKiloSessionsAll(ctx);
 }
 
 /** Extract visible messages from a Kilo Code session */
-export async function extractKiloCodeContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  if (isKiloDbSession(session)) return extractKiloDbContext(session);
-  return parseMessagesShared(session);
+export async function extractKiloCodeContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  if (isKiloDbSession(session)) return extractKiloDbContext(ctx, session);
+  return parseMessagesShared(ctx, session);
 }

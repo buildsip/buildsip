@@ -1,12 +1,12 @@
 #!/bin/bash
 # ============================================================================
-# cli-continues Parser Integration Test Runner
+# Agent Chat Parser Integration Test Runner
 #
 # Symlinks test fixtures to the paths each parser expects, builds the project,
 # runs the test harness, then cleans up — restoring any pre-existing data.
 #
 # Usage:  bash test-fixtures/test-all.sh
-#         (run from the cli-continues root directory)
+#         (run from the agent-chat-parser root directory)
 # ============================================================================
 
 set -euo pipefail
@@ -85,7 +85,7 @@ safe_copy() {
 }
 
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║     cli-continues Integration Test Runner                    ║"
+echo "║     Agent Chat Parser Integration Test Runner                ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 

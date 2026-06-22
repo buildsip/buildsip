@@ -1,31 +1,29 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
+import {
+  listSessions,
+  parseSession,
+  type AgentChatParserContext,
+  type Message,
+  type UnifiedSession,
+} from "@buildsip/agent-chat-parser";
 import { findProjectStore } from "./buildsip-store";
 import { makeTempFolder } from "./make-temp-folder";
+import { findTimeWindow, PrepareTempLogsOptions } from "./find-time-window";
 
-export type PrepareTempLogsOptions = {
-  date?: string;
-  days?: string;
-  hours?: string;
-  since?: string;
-  until?: string;
-};
+export type PrepareTempLogsContext = AgentChatParserContext;
 
 export type PrepareTempLogsResult = {
-  filesRead: number;
-  filesWritten: number;
+  buildsipSessionsRead: number;
+  buildsipSessionsWritten: number;
+  localAgentSessionsRead: number;
+  localAgentSessionsWritten: number;
   logsDir: string;
-  messagesWritten: number;
   since: string;
   temp: string;
   tempDir: string;
   tempLogsDir: string;
   until: string;
-};
-
-type TimeWindow = {
-  since: Date;
-  until: Date;
 };
 
 type PrepareLogFileInput = {
@@ -37,167 +35,107 @@ type PrepareLogFileInput = {
 };
 
 type PreparedLogFile = {
-  filesRead: number;
-  filesWritten: number;
-  messagesWritten: number;
+  sessionsRead: number;
+  sessionsWritten: number;
 };
 
-function parseDateValue(value: string, label: string) {
-  const date = new Date(value);
+type TempLogLine = {
+  cwd: string[];
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+};
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function normalizeBuildsipLogLine(message: unknown): TempLogLine {
+  if (typeof message !== "object" || message === null) {
+    throw new Error("BuildSip log line must be an object.");
+  }
+
+  const cwd = "cwd" in message ? message.cwd : undefined;
+  const role = "role" in message ? message.role : undefined;
+  const content = "content" in message ? message.content : undefined;
+  const timestamp = "timestamp" in message ? message.timestamp : undefined;
+
+  if (!isStringArray(cwd)) {
+    throw new Error("BuildSip log line is missing cwd.");
+  }
+
+  if (role !== "user" && role !== "assistant") {
+    throw new Error("BuildSip log line is missing role.");
+  }
+
+  if (typeof content !== "string") {
+    throw new Error("BuildSip log line is missing content.");
+  }
+
+  if (typeof timestamp !== "string") {
+    throw new Error("BuildSip log line is missing timestamp.");
+  }
+
+  const date = new Date(timestamp);
 
   if (Number.isNaN(date.getTime())) {
-    throw new Error(`Invalid ${label}: ${value}`);
-  }
-
-  return date;
-}
-
-function parseDateWindow(value: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-
-  if (match === null) {
-    throw new Error(`Invalid --date value: ${value}. Use YYYY-MM-DD.`);
-  }
-
-  const year = Number(match[1]);
-  const monthIndex = Number(match[2]) - 1;
-  const day = Number(match[3]);
-  const since = new Date(year, monthIndex, day, 0, 0, 0, 0);
-  const until = new Date(year, monthIndex, day + 1, 0, 0, 0, 0);
-
-  return { since, until };
-}
-
-function parsePositiveNumber(value: string, label: string) {
-  const number = Number(value);
-
-  if (!Number.isFinite(number) || number <= 0) {
-    throw new Error(`Invalid ${label} value: ${value}`);
-  }
-
-  return number;
-}
-
-function findRelativeTimeWindow(input: {
-  label: string;
-  now: Date;
-  until?: string;
-  value: string;
-  windowMs: number;
-}) {
-  return {
-    since: new Date(
-      input.now.getTime() -
-        parsePositiveNumber(input.value, input.label) * input.windowMs,
-    ),
-    until:
-      input.until === undefined
-        ? input.now
-        : parseDateValue(input.until, "--until"),
-  };
-}
-
-function findHoursWindow(
-  options: PrepareTempLogsOptions,
-  now: Date,
-): TimeWindow | undefined {
-  if (options.hours === undefined) {
-    return undefined;
-  }
-
-  return findRelativeTimeWindow({
-    label: "--hours",
-    now,
-    until: options.until,
-    value: options.hours,
-    windowMs: 60 * 60 * 1000,
-  });
-}
-
-function findDaysWindow(
-  options: PrepareTempLogsOptions,
-  now: Date,
-): TimeWindow | undefined {
-  if (options.days === undefined) {
-    return undefined;
-  }
-
-  return findRelativeTimeWindow({
-    label: "--days",
-    now,
-    until: options.until,
-    value: options.days,
-    windowMs: 24 * 60 * 60 * 1000,
-  });
-}
-
-function findSinceWindow(
-  options: PrepareTempLogsOptions,
-  now: Date,
-): TimeWindow | undefined {
-  if (options.since === undefined) {
-    return undefined;
+    throw new Error("BuildSip log line has an invalid timestamp.");
   }
 
   return {
-    since: parseDateValue(options.since, "--since"),
-    until:
-      options.until === undefined
-        ? now
-        : parseDateValue(options.until, "--until"),
+    cwd,
+    role,
+    content,
+    timestamp: date.toISOString(),
   };
 }
 
-function findTimeWindow(options: PrepareTempLogsOptions) {
-  const now = new Date();
-  const finders: Array<
-    (input: PrepareTempLogsOptions, now: Date) => TimeWindow | undefined
-  > = [
-    findHoursWindow,
-    findDaysWindow,
-    (input) =>
-      input.date === undefined ? undefined : parseDateWindow(input.date),
-    findSinceWindow,
-  ];
-
-  for (const findWindow of finders) {
-    const window = findWindow(options, now);
-
-    if (window !== undefined) {
-      return window;
-    }
-  }
-
-  if (options.until !== undefined) {
-    throw new Error("--until requires --since, --hours, or --days");
-  }
-
-  return {
-    since: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), // last 7 days
-    until: now,
-  };
-}
-
-function isMessageInWindow(message: unknown, since: Date, until: Date) {
-  if (typeof message !== "object" || message === null) {
-    return false;
-  }
-
-  if (!("timestamp" in message)) {
-    return false;
-  }
-
-  if (typeof message.timestamp !== "string") {
-    return false;
-  }
-
+function isLogLineInWindow(message: TempLogLine, since: Date, until: Date) {
   const timestamp = new Date(message.timestamp);
 
-  if (Number.isNaN(timestamp.getTime())) {
+  return timestamp >= since && timestamp < until;
+}
+
+function sessionFileName(session: Pick<UnifiedSession, "id" | "source">) {
+  return `${session.source}_${session.id}.jsonl`;
+}
+
+function isSessionInProject(session: UnifiedSession, projectRoot: string) {
+  if (session.cwd.trim().length === 0) {
     return false;
   }
 
-  return timestamp >= since && timestamp < until;
+  const cwd = resolve(session.cwd);
+  const root = resolve(projectRoot);
+
+  return cwd === root || cwd.startsWith(`${root}${sep}`);
+}
+
+function isSessionInWindow(session: UnifiedSession, since: Date, until: Date) {
+  return session.createdAt < until && session.updatedAt >= since;
+}
+
+function normalizeLocalMessage(session: UnifiedSession, message: Message): TempLogLine | null {
+  if (message.role !== "user" && message.role !== "assistant") {
+    return null;
+  }
+
+  if (typeof message.content !== "string" || message.content.trim() === "") {
+    return null;
+  }
+
+  const timestamp = message.timestamp ?? session.updatedAt;
+
+  if (Number.isNaN(timestamp.getTime())) {
+    return null;
+  }
+
+  return {
+    cwd: [session.cwd],
+    role: message.role,
+    content: message.content,
+    timestamp: timestamp.toISOString(),
+  };
 }
 
 async function readLogFileNames(logsDir: string) {
@@ -227,34 +165,89 @@ async function prepareLogFile({
   const messages = (await readFile(sourcePath, "utf8"))
     .split("\n")
     .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as unknown);
+    .map((line) => normalizeBuildsipLogLine(JSON.parse(line) as unknown));
 
-  const filteredMessages = messages.filter((message) =>
-    isMessageInWindow(message, since, until),
-  );
-
-  if (filteredMessages.length === 0) {
+  if (!messages.some((message) => isLogLineInWindow(message, since, until))) {
     return {
-      filesRead: 1,
-      filesWritten: 0,
-      messagesWritten: 0,
+      sessionsRead: 1,
+      sessionsWritten: 0,
     };
   }
 
   await writeFile(
     join(tempLogsDir, fileName),
-    `${filteredMessages.map((message) => JSON.stringify(message)).join("\n")}\n`,
+    `${messages.map((message) => JSON.stringify(message)).join("\n")}\n`,
     "utf8",
   );
 
   return {
-    filesRead: 1,
-    filesWritten: 1,
-    messagesWritten: filteredMessages.length,
+    sessionsRead: 1,
+    sessionsWritten: 1,
+  };
+}
+
+async function prepareLocalAgentSessions(
+  ctx: PrepareTempLogsContext,
+  input: {
+    buildsipFileNames: Set<string>;
+    projectRoot: string;
+    since: Date;
+    tempLogsDir: string;
+    until: Date;
+  },
+) {
+  let sessionsRead = 0;
+  let sessionsWritten = 0;
+  const writtenFileNames = new Set<string>();
+  const sessions = await listSessions(ctx, { cwd: input.projectRoot });
+
+  for (const session of sessions) {
+    if (
+      !isSessionInProject(session, input.projectRoot) ||
+      !isSessionInWindow(session, input.since, input.until)
+    ) {
+      continue;
+    }
+
+    const fileName = sessionFileName(session);
+
+    if (input.buildsipFileNames.has(fileName) || writtenFileNames.has(fileName)) {
+      continue;
+    }
+
+    sessionsRead++;
+
+    try {
+      const parsed = await parseSession(ctx, session);
+      const messages = parsed.messages
+        .map((message) => normalizeLocalMessage(parsed.session, message))
+        .filter((message): message is TempLogLine => message !== null);
+
+      if (messages.length === 0) {
+        continue;
+      }
+
+      await writeFile(
+        join(input.tempLogsDir, fileName),
+        `${messages.map((message) => JSON.stringify(message)).join("\n")}\n`,
+        "utf8",
+      );
+      sessionsWritten++;
+      writtenFileNames.add(fileName);
+    } catch (error) {
+      ctx.log.debug("prepare: failed to import local agent session", fileName, error);
+      continue;
+    }
+  }
+
+  return {
+    sessionsRead,
+    sessionsWritten,
   };
 }
 
 export async function prepareTempLogs(
+  ctx: PrepareTempLogsContext,
   options: PrepareTempLogsOptions = {},
 ): Promise<PrepareTempLogsResult> {
   const projectStore = await findProjectStore();
@@ -271,10 +264,10 @@ export async function prepareTempLogs(
     until: until.toISOString(),
   };
 
-  let filesRead = 0;
-  let filesWritten = 0;
-  let messagesWritten = 0;
+  let buildsipSessionsRead = 0;
+  let buildsipSessionsWritten = 0;
   const fileNames = await readLogFileNames(logsDir);
+  const buildsipFileNames = new Set(fileNames);
 
   for (const fileName of fileNames) {
     const preparedFile = await prepareLogFile({
@@ -285,15 +278,23 @@ export async function prepareTempLogs(
       until,
     });
 
-    filesRead += preparedFile.filesRead;
-    filesWritten += preparedFile.filesWritten;
-    messagesWritten += preparedFile.messagesWritten;
+    buildsipSessionsRead += preparedFile.sessionsRead;
+    buildsipSessionsWritten += preparedFile.sessionsWritten;
   }
+
+  const localAgentSessions = await prepareLocalAgentSessions(ctx, {
+    buildsipFileNames,
+    projectRoot: projectStore.projectRoot,
+    since,
+    tempLogsDir,
+    until,
+  });
 
   return {
     ...result,
-    filesRead,
-    filesWritten,
-    messagesWritten,
+    buildsipSessionsRead,
+    buildsipSessionsWritten,
+    localAgentSessionsRead: localAgentSessions.sessionsRead,
+    localAgentSessionsWritten: localAgentSessions.sessionsWritten,
   };
 }

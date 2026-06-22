@@ -1,7 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
 import type { CodexMessage, CodexSessionMeta } from '../types/schemas';
 import { findFiles, mapConcurrent } from '../utils/fs-helpers';
 import { readJsonlFile, scanJsonlFile, scanJsonlHead } from '../utils/jsonl';
@@ -17,9 +16,9 @@ const MAX_METADATA_SCAN_BYTES = 1024 * 1024;
 /**
  * Find all Codex session files recursively
  */
-async function findSessionFiles(): Promise<string[]> {
+async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> {
   return [CODEX_SESSIONS_DIR, CODEX_ARCHIVED_SESSIONS_DIR].flatMap((dir) =>
-    findFiles(dir, {
+    findFiles(ctx, dir, {
       match: (entry) => entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl'),
     }),
   );
@@ -28,14 +27,14 @@ async function findSessionFiles(): Promise<string[]> {
 /**
  * Parse session metadata and first user message
  */
-async function parseSessionInfo(filePath: string): Promise<{
+async function parseSessionInfo(ctx: AgentChatParserContext, filePath: string): Promise<{
   meta: CodexSessionMeta | null;
   firstUserMessage: string;
 }> {
   let meta: CodexSessionMeta | null = null;
   let firstUserMessage = '';
 
-  await scanJsonlHead(
+  await scanJsonlHead(ctx,
     filePath,
     150,
     (parsed) => {
@@ -75,7 +74,9 @@ function parseFilename(filename: string): { timestamp: Date; id: string } | null
   const match = filename.match(/rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(.+)\.jsonl$/);
   if (!match) return null;
 
-  const [, year, month, day, hour, min, sec, id] = match;
+  const [, year, month, day, hour, min, sec] = match;
+  const id = match[7];
+  if (id === undefined) return null;
   const timestamp = new Date(`${year}-${month}-${day}T${hour}:${min}:${sec}Z`);
 
   return { timestamp, id };
@@ -84,15 +85,18 @@ function parseFilename(filename: string): { timestamp: Date; id: string } | null
 /**
  * Parse all Codex sessions
  */
-export async function parseCodexSessions(options: SessionParseOptions = {}): Promise<UnifiedSession[]> {
-  const files = await findSessionFiles();
+export async function parseCodexSessions(
+  ctx: AgentChatParserContext,
+  options: SessionParseOptions = {},
+): Promise<UnifiedSession[]> {
+  const files = await findSessionFiles(ctx);
   const parsedSessions = await mapConcurrent(files, 16, async (filePath): Promise<UnifiedSession | null> => {
     try {
       const filename = path.basename(filePath);
       const parsed = parseFilename(filename);
       if (!parsed) return null;
 
-      const { meta, firstUserMessage } = await parseSessionInfo(filePath);
+      const { meta, firstUserMessage } = await parseSessionInfo(ctx, filePath);
       const fileStats = fs.statSync(filePath);
 
       const payloadRecord = meta?.payload as Record<string, unknown> | undefined;
@@ -104,7 +108,7 @@ export async function parseCodexSessions(options: SessionParseOptions = {}): Pro
       const gitSha = meta?.payload?.git?.commit_hash || meta?.payload?.git?.sha;
       const repo = extractRepo({ gitUrl, cwd });
       const lastTranscriptTimestamp =
-        fileStats.size <= MAX_METADATA_SCAN_BYTES ? await extractLastCodexTimestamp(filePath) : undefined;
+        fileStats.size <= MAX_METADATA_SCAN_BYTES ? await extractLastCodexTimestamp(ctx, filePath) : undefined;
       void firstUserMessage;
 
       return {
@@ -122,7 +126,7 @@ export async function parseCodexSessions(options: SessionParseOptions = {}): Pro
         originalPath: filePath,
       };
     } catch (err) {
-      logger.debug('codex: skipping unparseable session', filePath, err);
+      ctx.log.debug('codex: skipping unparseable session', filePath, err);
       // Skip files we can't parse
       return null;
     }
@@ -144,15 +148,18 @@ export async function parseCodexSessions(options: SessionParseOptions = {}): Pro
 /**
  * Read all messages from a Codex session
  */
-async function readAllMessages(filePath: string): Promise<CodexMessage[]> {
-  return readJsonlFile<CodexMessage>(filePath);
+async function readAllMessages(ctx: AgentChatParserContext, filePath: string): Promise<CodexMessage[]> {
+  return readJsonlFile(ctx, filePath);
 }
 
 /**
  * Extract visible messages from a Codex session.
  */
-export async function extractCodexContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const messages = await readAllMessages(session.originalPath);
+export async function extractCodexContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const messages = await readAllMessages(ctx, session.originalPath);
 
   // Codex sessions contain both response_item and event_msg for the same conversation turns.
   // Collect from both sources separately to avoid duplicates, then merge preferring response_item.
@@ -221,9 +228,12 @@ function parseValidDate(value: string | undefined): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
-async function extractLastCodexTimestamp(filePath: string): Promise<Date | undefined> {
+async function extractLastCodexTimestamp(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<Date | undefined> {
   let lastTimestamp: Date | undefined;
-  await scanJsonlFile(
+  await scanJsonlFile(ctx,
     filePath,
     (parsed) => {
       const timestamp = parseValidDate((parsed as { timestamp?: string }).timestamp);

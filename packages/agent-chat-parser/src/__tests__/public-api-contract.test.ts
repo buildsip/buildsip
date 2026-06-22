@@ -4,6 +4,12 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const tmpDirs: string[] = [];
+const ctx = {
+  log: {
+    debug() {},
+    warn() {},
+  },
+};
 
 function writeJsonl(filePath: string, rows: unknown[]): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -71,7 +77,7 @@ describe('public API contract', () => {
     ]);
 
     const { listSessions, parseSession } = await import('../utils/index');
-    const sessions = await listSessions({ source: 'codex' });
+    const sessions = await listSessions(ctx, { source: 'codex' });
 
     expect(sessions).toHaveLength(1);
     const session = sessions[0]!;
@@ -88,7 +94,7 @@ describe('public API contract', () => {
     expect('lines' in session).toBe(false);
     expect('bytes' in session).toBe(false);
 
-    const parsed = await parseSession(session);
+    const parsed = await parseSession(ctx, session);
 
     expect(parsed.session).toBe(session);
     expect(parsed.messages).toEqual([

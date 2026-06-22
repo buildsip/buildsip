@@ -9,6 +9,10 @@ rmSync(distDir, { force: true, recursive: true });
 
 await build({
   alias: {
+    "@buildsip/agent-chat-parser": join(
+      cwd,
+      "../agent-chat-parser/src/index.ts",
+    ),
     "@buildsip/cli-auth": join(cwd, "../cli-auth/src/index.ts"),
     "@buildsip/hooks": join(cwd, "../hooks/src/index.ts"),
   },

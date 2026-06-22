@@ -1,7 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
 import type { DroidEvent, DroidSessionStart, DroidSettings } from '../types/schemas';
 import { DroidSettingsSchema } from '../types/schemas';
 import { isSystemContent } from '../utils/content';
@@ -20,10 +19,10 @@ const DROID_SESSION_DIRS = [DROID_PROJECTS_DIR, DROID_SESSIONS_DIR];
  * - ~/.factory/projects/<workspace-slug>/<uuid>.jsonl
  * - ~/.factory/sessions/<workspace-slug>/<uuid>.jsonl
  */
-async function findSessionFiles(): Promise<string[]> {
+async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> {
   const files = new Set<string>();
   for (const root of DROID_SESSION_DIRS) {
-    for (const filePath of findFiles(root, {
+    for (const filePath of findFiles(ctx, root, {
       match: (entry) =>
         entry.name.endsWith('.jsonl') &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i.test(entry.name),
@@ -38,17 +37,17 @@ async function findSessionFiles(): Promise<string[]> {
 /**
  * Read companion .settings.json for a session
  */
-function readSettings(jsonlPath: string): DroidSettings | null {
+function readSettings(ctx: AgentChatParserContext, jsonlPath: string): DroidSettings | null {
   const settingsPath = jsonlPath.replace(/\.jsonl$/, '.settings.json');
   try {
     if (fs.existsSync(settingsPath)) {
       const result = DroidSettingsSchema.safeParse(JSON.parse(fs.readFileSync(settingsPath, 'utf8')));
       if (result.success) return result.data;
-      logger.debug('droid: settings validation failed', settingsPath, result.error.message);
+      ctx.log.debug('droid: settings validation failed', settingsPath, result.error.message);
       return null;
     }
   } catch (err) {
-    logger.debug('droid: failed to read settings', settingsPath, err);
+    ctx.log.debug('droid: failed to read settings', settingsPath, err);
   }
   return null;
 }
@@ -56,7 +55,7 @@ function readSettings(jsonlPath: string): DroidSettings | null {
 /**
  * Parse session metadata from session_start event and first user message
  */
-async function parseSessionInfo(filePath: string): Promise<{
+async function parseSessionInfo(ctx: AgentChatParserContext, filePath: string): Promise<{
   sessionStart: DroidSessionStart | null;
   firstUserMessage: string;
   firstTimestamp: string;
@@ -106,7 +105,7 @@ async function parseSessionInfo(filePath: string): Promise<{
     return 'continue';
   };
 
-  await scanJsonlFile(filePath, visitor);
+  await scanJsonlFile(ctx, filePath, visitor);
 
   return { sessionStart, firstUserMessage, firstTimestamp, lastTimestamp, cwdIsNotGitRepo };
 }
@@ -114,18 +113,21 @@ async function parseSessionInfo(filePath: string): Promise<{
 /**
  * Parse all Droid sessions
  */
-export async function parseDroidSessions(_options: SessionParseOptions = {}): Promise<UnifiedSession[]> {
-  const files = await findSessionFiles();
+export async function parseDroidSessions(
+  ctx: AgentChatParserContext,
+  _options: SessionParseOptions = {},
+): Promise<UnifiedSession[]> {
+  const files = await findSessionFiles(ctx);
   const sessionsById = new Map<string, UnifiedSession>();
 
   for (const filePath of files) {
     try {
       const { sessionStart, firstUserMessage, firstTimestamp, lastTimestamp, cwdIsNotGitRepo } =
-        await parseSessionInfo(filePath);
+        await parseSessionInfo(ctx, filePath);
       if (!sessionStart) continue;
 
       const fileStats = fs.statSync(filePath);
-      const settings = readSettings(filePath);
+      const settings = readSettings(ctx, filePath);
 
       const workspaceSlug = path.basename(path.dirname(filePath));
       const cwd = sessionStart.cwd || cwdFromSlug(workspaceSlug);
@@ -154,7 +156,7 @@ export async function parseDroidSessions(_options: SessionParseOptions = {}): Pr
         sessionsById.set(nextSession.id, nextSession);
       }
     } catch (err) {
-      logger.debug('droid: skipping unparseable session', filePath, err);
+      ctx.log.debug('droid: skipping unparseable session', filePath, err);
       // Skip files we can't parse
     }
   }
@@ -165,9 +167,12 @@ export async function parseDroidSessions(_options: SessionParseOptions = {}): Pr
 /**
  * Extract visible messages from a Droid session.
  */
-export async function extractDroidContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const events = await readJsonlFile<DroidEvent>(session.originalPath);
-  const settings = readSettings(session.originalPath);
+export async function extractDroidContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const events = await readJsonlFile<DroidEvent>(ctx, session.originalPath);
+  const settings = readSettings(ctx, session.originalPath);
 
   const messages: MessageDraft[] = [];
 
