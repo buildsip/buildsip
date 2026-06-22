@@ -1,8 +1,7 @@
 import * as fs from 'node:fs';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
 import { findFiles, listSubdirectories, mapConcurrent } from '../utils/fs-helpers';
 import { readJsonlFile } from '../utils/jsonl';
 import { extractRepoFromCwd, homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
@@ -76,11 +75,11 @@ function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-async function readJsonFile(filePath: string): Promise<unknown | undefined> {
+async function readJsonFile(ctx: AgentChatParserContext, filePath: string): Promise<unknown | undefined> {
   try {
     return JSON.parse(await fsp.readFile(filePath, 'utf8'));
   } catch (err) {
-    logger.debug('kiro: failed to parse json file', filePath, err);
+    ctx.log.debug('kiro: failed to parse json file', filePath, err);
     return undefined;
   }
 }
@@ -133,7 +132,7 @@ function getDate(record: JsonRecord | undefined, keys: readonly string[]): Date 
   return undefined;
 }
 
-function decodeWorkspaceFolderName(folderName: string): string | undefined {
+function decodeWorkspaceFolderName(ctx: AgentChatParserContext, folderName: string): string | undefined {
   const normalized = folderName.replace(/-/g, '+').replace(/_/g, '/');
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
   try {
@@ -149,7 +148,7 @@ function decodeWorkspaceFolderName(folderName: string): string | undefined {
     }
     return undefined;
   } catch (err) {
-    logger.debug('kiro: failed to decode workspace folder', folderName, err);
+    ctx.log.debug('kiro: failed to decode workspace folder', folderName, err);
     return undefined;
   }
 }
@@ -166,21 +165,21 @@ function parseSessionIndex(data: unknown): JsonRecord[] {
   return [];
 }
 
-async function readSessionIndex(indexPath: string): Promise<JsonRecord[]> {
+async function readSessionIndex(ctx: AgentChatParserContext, indexPath: string): Promise<JsonRecord[]> {
   if (!fs.existsSync(indexPath)) return [];
-  return parseSessionIndex(await readJsonFile(indexPath));
+  return parseSessionIndex(await readJsonFile(ctx, indexPath));
 }
 
-async function discoverSessionRefs(): Promise<KiroSessionRef[]> {
+async function discoverSessionRefs(ctx: AgentChatParserContext): Promise<KiroSessionRef[]> {
   const refs: KiroSessionRef[] = [];
 
   for (const baseDir of getKiroWorkspaceSessionDirs()) {
-    for (const workspaceDir of listSubdirectories(baseDir)) {
-      const workspacePath = decodeWorkspaceFolderName(path.basename(workspaceDir));
+    for (const workspaceDir of listSubdirectories(ctx, baseDir)) {
+      const workspacePath = decodeWorkspaceFolderName(ctx, path.basename(workspaceDir));
       const indexedSessionPaths = new Set<string>();
       const indexPath = path.join(workspaceDir, 'sessions.json');
 
-      for (const entry of await readSessionIndex(indexPath)) {
+      for (const entry of await readSessionIndex(ctx, indexPath)) {
         const sessionId = getString(entry, ['sessionId', 'id', 'conversationId']);
         if (!sessionId) continue;
 
@@ -196,7 +195,7 @@ async function discoverSessionRefs(): Promise<KiroSessionRef[]> {
         });
       }
 
-      const looseSessionFiles = findFiles(workspaceDir, {
+      const looseSessionFiles = findFiles(ctx, workspaceDir, {
         match: (entry) => entry.name.endsWith('.json') && entry.name !== 'sessions.json',
         recursive: false,
       });
@@ -210,7 +209,7 @@ async function discoverSessionRefs(): Promise<KiroSessionRef[]> {
 
   const acpDir = getKiroAcpSessionDir();
   if (fs.existsSync(acpDir)) {
-    const metadataFiles = findFiles(acpDir, {
+    const metadataFiles = findFiles(ctx, acpDir, {
       match: (entry) => entry.name.endsWith('.json'),
       recursive: false,
     });
@@ -226,7 +225,7 @@ async function discoverSessionRefs(): Promise<KiroSessionRef[]> {
       });
     }
 
-    const eventFiles = findFiles(acpDir, {
+    const eventFiles = findFiles(ctx, acpDir, {
       match: (entry) => entry.name.endsWith('.jsonl'),
       recursive: false,
     });
@@ -312,9 +311,9 @@ function extractMessages(sessionData: JsonRecord | undefined): MessageDraft[] {
   });
 }
 
-async function readAcpEvents(eventPath: string | undefined): Promise<unknown[]> {
+async function readAcpEvents(ctx: AgentChatParserContext, eventPath: string | undefined): Promise<unknown[]> {
   if (!eventPath || !fs.existsSync(eventPath)) return [];
-  return readJsonlFile<unknown>(eventPath);
+  return readJsonlFile(ctx, eventPath);
 }
 
 function getAcpUpdate(record: JsonRecord): JsonRecord | undefined {
@@ -621,7 +620,10 @@ function getModel(ref: KiroSessionRef, sessionData: JsonRecord | undefined): str
   return getString(sessionData, ['selectedModel', 'model']) ?? getString(ref.indexEntry, ['selectedModel', 'model']);
 }
 
-async function statSessionRef(ref: KiroSessionRef): Promise<KiroStatInfo | undefined> {
+async function statSessionRef(
+  ctx: AgentChatParserContext,
+  ref: KiroSessionRef,
+): Promise<KiroStatInfo | undefined> {
   try {
     if (ref.surface === 'acp-jsonl') {
       const candidatePaths = [ref.sessionPath, ref.eventPath].filter((filePath): filePath is string => {
@@ -648,21 +650,25 @@ async function statSessionRef(ref: KiroSessionRef): Promise<KiroStatInfo | undef
       return { stats: await fsp.stat(ref.indexPath), originalPath: ref.indexPath };
     }
   } catch (err) {
-    logger.debug('kiro: failed to stat session ref', ref.sessionPath, err);
+    ctx.log.debug('kiro: failed to stat session ref', ref.sessionPath, err);
   }
   return undefined;
 }
 
-async function parseAcpSessionRef(ref: KiroSessionRef, options: SessionParseOptions): Promise<UnifiedSession | null> {
-  const sessionData = ref.sessionPath.endsWith('.json') ? await readJsonFile(ref.sessionPath) : undefined;
+async function parseAcpSessionRef(
+  ctx: AgentChatParserContext,
+  ref: KiroSessionRef,
+  options: SessionParseOptions,
+): Promise<UnifiedSession | null> {
+  const sessionData = ref.sessionPath.endsWith('.json') ? await readJsonFile(ctx, ref.sessionPath) : undefined;
   if (ref.sessionPath.endsWith('.json') && sessionData === undefined) return null;
 
   const sessionRecord = isRecord(sessionData) ? sessionData : undefined;
-  const events = await readAcpEvents(ref.eventPath);
+  const events = await readAcpEvents(ctx, ref.eventPath);
   const sessionId = getSessionId(ref, sessionRecord);
   if (!sessionId) return null;
 
-  const statInfo = await statSessionRef(ref);
+  const statInfo = await statSessionRef(ctx, ref);
   if (!statInfo) return null;
 
   const cwd = extractAcpCwd(sessionRecord, events);
@@ -689,18 +695,22 @@ async function parseAcpSessionRef(ref: KiroSessionRef, options: SessionParseOpti
   };
 }
 
-async function parseSessionRef(ref: KiroSessionRef, options: SessionParseOptions): Promise<UnifiedSession | null> {
-  if (ref.surface === 'acp-jsonl') return parseAcpSessionRef(ref, options);
+async function parseSessionRef(
+  ctx: AgentChatParserContext,
+  ref: KiroSessionRef,
+  options: SessionParseOptions,
+): Promise<UnifiedSession | null> {
+  if (ref.surface === 'acp-jsonl') return parseAcpSessionRef(ctx, ref, options);
 
   const sessionFileExists = fs.existsSync(ref.sessionPath);
-  const sessionData = sessionFileExists ? await readJsonFile(ref.sessionPath) : undefined;
+  const sessionData = sessionFileExists ? await readJsonFile(ctx, ref.sessionPath) : undefined;
   if (sessionFileExists && sessionData === undefined && !ref.indexEntry) return null;
 
   const sessionRecord = isRecord(sessionData) ? sessionData : undefined;
   const sessionId = getSessionId(ref, sessionRecord);
   if (!sessionId) return null;
 
-  const statInfo = await statSessionRef(ref);
+  const statInfo = await statSessionRef(ctx, ref);
   if (!statInfo) return null;
 
   const cwd = getWorkspacePath(ref, sessionRecord);
@@ -732,13 +742,16 @@ async function parseSessionRef(ref: KiroSessionRef, options: SessionParseOptions
 /**
  * Parse all Kiro sessions into the unified format.
  */
-export async function parseKiroSessions(options: SessionParseOptions = {}): Promise<UnifiedSession[]> {
-  const refs = await discoverSessionRefs();
+export async function parseKiroSessions(
+  ctx: AgentChatParserContext,
+  options: SessionParseOptions = {},
+): Promise<UnifiedSession[]> {
+  const refs = await discoverSessionRefs(ctx);
   const parsedSessions = await mapConcurrent(refs, 16, async (ref) => {
     try {
-      return await parseSessionRef(ref, options);
+      return await parseSessionRef(ctx, ref, options);
     } catch (err) {
-      logger.debug('kiro: skipping unparseable session', ref.sessionPath, err);
+      ctx.log.debug('kiro: skipping unparseable session', ref.sessionPath, err);
       return null;
     }
   });
@@ -756,13 +769,16 @@ export async function parseKiroSessions(options: SessionParseOptions = {}): Prom
   return options.limit ? sorted.slice(0, options.limit) : sorted;
 }
 
-async function readSiblingIndexEntry(session: UnifiedSession): Promise<JsonRecord | undefined> {
+async function readSiblingIndexEntry(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<JsonRecord | undefined> {
   const indexPath =
     path.basename(session.originalPath) === 'sessions.json'
       ? session.originalPath
       : path.join(path.dirname(session.originalPath), 'sessions.json');
 
-  const entries = await readSessionIndex(indexPath);
+  const entries = await readSessionIndex(ctx, indexPath);
   return entries.find((entry) => getString(entry, ['sessionId', 'id', 'conversationId']) === session.id);
 }
 
@@ -796,12 +812,15 @@ function resolveAcpContextPaths(session: UnifiedSession): { metadataPath?: strin
 /**
  * Extract visible messages from a Kiro session.
  */
-export async function extractKiroContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
+export async function extractKiroContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
   if (isKiroAcpSessionPath(session.originalPath)) {
     const paths = resolveAcpContextPaths(session);
-    const sessionData = paths.metadataPath ? await readJsonFile(paths.metadataPath) : undefined;
+    const sessionData = paths.metadataPath ? await readJsonFile(ctx, paths.metadataPath) : undefined;
     const sessionRecord = isRecord(sessionData) ? sessionData : undefined;
-    const events = await readAcpEvents(paths.eventPath);
+    const events = await readAcpEvents(ctx, paths.eventPath);
     const eventMessages = extractAcpMessages(events);
     const jsonMessages = extractMessages(sessionRecord);
     const messages = eventMessages.length > 0 ? eventMessages : jsonMessages;
@@ -820,14 +839,14 @@ export async function extractKiroContext(session: UnifiedSession): Promise<Parse
   }
 
   const sessionPath = resolveContextSessionPath(session);
-  const sessionData = fs.existsSync(sessionPath) ? await readJsonFile(sessionPath) : undefined;
+  const sessionData = fs.existsSync(sessionPath) ? await readJsonFile(ctx, sessionPath) : undefined;
   const sessionRecord = isRecord(sessionData) ? sessionData : undefined;
-  const indexEntry = await readSiblingIndexEntry(session);
+  const indexEntry = await readSiblingIndexEntry(ctx, session);
   const workspacePath = getWorkspacePath(
     {
       surface: 'ide-workspace',
       workspaceDir: path.dirname(sessionPath),
-      workspacePath: decodeWorkspaceFolderName(path.basename(path.dirname(sessionPath))),
+      workspacePath: decodeWorkspaceFolderName(ctx, path.basename(path.dirname(sessionPath))),
       sessionPath,
       indexEntry,
     },

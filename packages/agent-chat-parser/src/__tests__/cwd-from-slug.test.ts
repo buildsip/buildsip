@@ -8,7 +8,7 @@ describe('cwdFromSlug', () => {
   const itWindows = process.platform === 'win32' ? it : it.skip;
 
   itWindows('resolves Windows drive-letter slugs using existing path', () => {
-    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'continues-slug-'));
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-chat-parser-slug-'));
     const target = path.join(base, 'project-alpha');
     fs.mkdirSync(target, { recursive: true });
 

@@ -9,14 +9,17 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@better-fetch/fetch": "^1.1.21",
     "conf": "^15.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@better-fetch/fetch": "^1.1.21",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^25.9.1",
-    "typescript": "5.9.2"
+    "conf": "^15.1.0",
+    "typescript": "5.9.2",
+    "zod": "^4.4.3"
   }
 }

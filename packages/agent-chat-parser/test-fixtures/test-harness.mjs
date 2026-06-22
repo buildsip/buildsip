@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Integration test harness for cli-continues parsers.
+ * Integration test harness for agent chat parsers.
  *
  * Imports each parser's parse + extract functions from the compiled dist/
  * and validates they return expected data against the test fixtures.
@@ -305,7 +305,7 @@ async function testAntigravity() {
 
 async function main() {
   console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║         cli-continues Parser Integration Tests              ║');
+  console.log('║        Agent Chat Parser Integration Tests                  ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
 
   await testAmp();

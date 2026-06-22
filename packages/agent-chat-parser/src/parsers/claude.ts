@@ -1,7 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
 import type { ClaudeMessage } from '../types/schemas';
 import { extractTextFromBlocks, isRealUserMessage } from '../utils/content';
 import { findFiles, mapConcurrent } from '../utils/fs-helpers';
@@ -20,13 +19,16 @@ export function claudeProjectSlugFromCwd(cwd: string): string {
 /**
  * Find all Claude session files recursively
  */
-async function findSessionFiles(options: SessionParseOptions = {}): Promise<string[]> {
+async function findSessionFiles(
+  ctx: AgentChatParserContext,
+  options: SessionParseOptions = {},
+): Promise<string[]> {
   const roots = options.cwd
     ? [path.join(CLAUDE_PROJECTS_DIR, claudeProjectSlugFromCwd(options.cwd))]
     : [CLAUDE_PROJECTS_DIR];
 
   return roots.flatMap((root) =>
-    findFiles(root, {
+    findFiles(ctx, root, {
       match: (entry) =>
         entry.name.endsWith('.jsonl') &&
         !entry.name.includes('debug') &&
@@ -38,7 +40,7 @@ async function findSessionFiles(options: SessionParseOptions = {}): Promise<stri
 /**
  * Parse session metadata and first user message
  */
-async function parseSessionInfo(filePath: string): Promise<{
+async function parseSessionInfo(ctx: AgentChatParserContext, filePath: string): Promise<{
   sessionId: string;
   cwd: string;
   gitBranch?: string;
@@ -85,7 +87,7 @@ async function parseSessionInfo(filePath: string): Promise<{
     return 'continue';
   };
 
-  await scanJsonlFile(filePath, visitor);
+  await scanJsonlFile(ctx, filePath, visitor);
 
   if (!sessionId) {
     sessionId = path.basename(filePath, '.jsonl');
@@ -97,11 +99,14 @@ async function parseSessionInfo(filePath: string): Promise<{
 /**
  * Parse all Claude sessions
  */
-export async function parseClaudeSessions(options: SessionParseOptions = {}): Promise<UnifiedSession[]> {
-  const files = await findSessionFiles(options);
+export async function parseClaudeSessions(
+  ctx: AgentChatParserContext,
+  options: SessionParseOptions = {},
+): Promise<UnifiedSession[]> {
+  const files = await findSessionFiles(ctx, options);
   const parsedSessions = await mapConcurrent(files, 16, async (filePath): Promise<UnifiedSession | null> => {
     try {
-      const info = await parseSessionInfo(filePath);
+      const info = await parseSessionInfo(ctx, filePath);
       if (options.cwd && info.cwd && !matchesCwd(info.cwd, options.cwd)) return null;
 
       const fileStats = fs.statSync(filePath);
@@ -120,7 +125,7 @@ export async function parseClaudeSessions(options: SessionParseOptions = {}): Pr
         originalPath: filePath,
       };
     } catch (err) {
-      logger.debug('claude: skipping unparseable session', filePath, err);
+      ctx.log.debug('claude: skipping unparseable session', filePath, err);
       // Skip files we can't parse
       return null;
     }
@@ -170,8 +175,11 @@ function getClaudeMessageTimestamp(msg: ClaudeMessage): string | undefined {
 /**
  * Extract visible messages from a Claude session.
  */
-export async function extractClaudeContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
-  const messages = await readJsonlFile<ClaudeMessage>(session.originalPath);
+export async function extractClaudeContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
+  const messages = await readJsonlFile<ClaudeMessage>(ctx, session.originalPath);
 
   const conversational = messages.filter((m) => {
     if (m.type !== 'user' && m.type !== 'assistant') return false;

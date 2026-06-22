@@ -19,7 +19,7 @@ export function registerPrepareCommand(program: Command) {
     .option("--until <iso>", "Include messages before this timestamp")
     .action(async (options: PrepareTempLogsOptions) => {
       try {
-        const result = await prepareTempLogs(options);
+        const result = await prepareTempLogs({ log }, options);
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       } catch (error) {
         log.debug(error);

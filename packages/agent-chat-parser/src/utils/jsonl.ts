@@ -4,7 +4,7 @@
  */
 import * as fs from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
-import { logger } from '../logger';
+import type { AgentChatParserContext } from '../types/index';
 
 const DEFAULT_MAX_LINE_CHARS = 16 * 1024 * 1024;
 
@@ -25,6 +25,7 @@ export interface JsonlReadOptions {
  * (e.g. recovering glued JSON objects from a single physical line).
  */
 export async function scanJsonlLines(
+  ctx: AgentChatParserContext,
   filePath: string,
   visitor: (line: string, lineIndex: number) => 'continue' | 'stop',
   options: JsonlReadOptions = {},
@@ -42,7 +43,7 @@ export async function scanJsonlLines(
 
   const finishLine = (): 'continue' | 'stop' => {
     if (skippingOversizedLine) {
-      logger.debug('jsonl: skipping oversized line at index', lineIndex, 'in', filePath);
+      ctx.log.debug('jsonl: skipping oversized line at index', lineIndex, 'in', filePath);
       skippingOversizedLine = false;
       lineBuffer = '';
       lineIndex++;
@@ -116,7 +117,7 @@ export async function scanJsonlLines(
       }
     }
   } catch (err) {
-    logger.debug('jsonl: failed to stream', filePath, err);
+    ctx.log.debug('jsonl: failed to stream', filePath, err);
   }
 }
 
@@ -125,17 +126,22 @@ export async function scanJsonlLines(
  * Each line is JSON.parse'd; invalid lines are silently skipped.
  * Returns an empty array if the file doesn't exist or can't be read.
  */
-export async function readJsonlFile<T = unknown>(filePath: string, options?: JsonlReadOptions): Promise<T[]> {
+export async function readJsonlFile<T = unknown>(
+  ctx: AgentChatParserContext,
+  filePath: string,
+  options?: JsonlReadOptions,
+): Promise<T[]> {
   if (!fs.existsSync(filePath)) return [];
 
   const items: T[] = [];
   await scanJsonlLines(
+    ctx,
     filePath,
     (line) => {
       try {
         items.push(JSON.parse(line));
       } catch (err) {
-        logger.debug('jsonl: skipping invalid line in', filePath, err);
+        ctx.log.debug('jsonl: skipping invalid line in', filePath, err);
       }
       return 'continue';
     },
@@ -150,6 +156,7 @@ export async function readJsonlFile<T = unknown>(filePath: string, options?: Jso
  * Useful for extracting metadata from session headers without reading the full file.
  */
 export async function scanJsonlHead(
+  ctx: AgentChatParserContext,
   filePath: string,
   maxLines: number,
   visitor: (parsed: unknown, lineIndex: number) => 'continue' | 'stop',
@@ -158,6 +165,7 @@ export async function scanJsonlHead(
   if (!fs.existsSync(filePath)) return;
 
   await scanJsonlLines(
+    ctx,
     filePath,
     (line, lineIndex) => {
       if (lineIndex >= maxLines) return 'stop';
@@ -165,7 +173,7 @@ export async function scanJsonlHead(
         const parsed = JSON.parse(line);
         return visitor(parsed, lineIndex);
       } catch {
-        logger.debug('jsonl: skipping invalid line at index', lineIndex, 'in', filePath);
+        ctx.log.debug('jsonl: skipping invalid line at index', lineIndex, 'in', filePath);
       }
       return 'continue';
     },
@@ -178,6 +186,7 @@ export async function scanJsonlHead(
  * The visitor returns 'continue' to keep reading or 'stop' to abort early.
  */
 export async function scanJsonlFile(
+  ctx: AgentChatParserContext,
   filePath: string,
   visitor: (parsed: unknown, lineIndex: number) => 'continue' | 'stop',
   options?: JsonlReadOptions,
@@ -185,13 +194,14 @@ export async function scanJsonlFile(
   if (!fs.existsSync(filePath)) return;
 
   await scanJsonlLines(
+    ctx,
     filePath,
     (line, lineIndex) => {
       try {
         const parsed = JSON.parse(line);
         return visitor(parsed, lineIndex);
       } catch {
-        logger.debug('jsonl: skipping invalid line at index', lineIndex, 'in', filePath);
+        ctx.log.debug('jsonl: skipping invalid line at index', lineIndex, 'in', filePath);
       }
       return 'continue';
     },
@@ -203,7 +213,10 @@ export async function scanJsonlFile(
  * Count lines in a file and return both count and file size in bytes.
  * Used by multiple parsers for session metadata.
  */
-export async function getFileStats(filePath: string): Promise<{ lines: number; bytes: number }> {
+export async function getFileStats(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<{ lines: number; bytes: number }> {
   const stats = fs.statSync(filePath);
   if (stats.size === 0) return { lines: 0, bytes: stats.size };
 
@@ -229,7 +242,7 @@ export async function getFileStats(filePath: string): Promise<{ lines: number; b
     if (lastByte !== 10) lines++;
     return { lines, bytes: stats.size };
   } catch (err) {
-    logger.debug('jsonl: failed to count lines in', filePath, err);
+    ctx.log.debug('jsonl: failed to count lines in', filePath, err);
     return { lines: 0, bytes: stats.size };
   }
 }

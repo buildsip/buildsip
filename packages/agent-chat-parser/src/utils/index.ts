@@ -1,14 +1,22 @@
 import { UnknownSourceError } from '../errors';
 import { adapters } from '../parsers/registry';
-import type { ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  SessionParseOptions,
+  UnifiedSession,
+} from '../types/index';
 
 /**
  * List sessions by scanning native tool storage read-only.
  */
-export async function listSessions(options: SessionParseOptions = {}): Promise<UnifiedSession[]> {
+export async function listSessions(
+  ctx: AgentChatParserContext,
+  options: SessionParseOptions = {},
+): Promise<UnifiedSession[]> {
   const selectedAdapters = options.source ? [adapters[options.source]] : Object.values(adapters);
   const parseOptions = options.source ? { cwd: options.cwd, limit: options.limit } : { cwd: options.cwd };
-  const results = await Promise.allSettled(selectedAdapters.map((adapter) => adapter.parseSessions(parseOptions)));
+  const results = await Promise.allSettled(selectedAdapters.map((adapter) => adapter.parseSessions(ctx, parseOptions)));
 
   const allSessions = results
     .filter((result): result is PromiseFulfilledResult<UnifiedSession[]> => result.status === 'fulfilled')
@@ -21,18 +29,21 @@ export async function listSessions(options: SessionParseOptions = {}): Promise<U
 /**
  * Find a session by ID.
  */
-export async function findSession(id: string): Promise<UnifiedSession | null> {
-  const all = await listSessions();
+export async function findSession(ctx: AgentChatParserContext, id: string): Promise<UnifiedSession | null> {
+  const all = await listSessions(ctx);
   return all.find((session) => session.id === id || session.id.startsWith(id)) || null;
 }
 
 /**
  * Parse the full visible conversation for a session based on its source.
  */
-export async function parseSession(session: UnifiedSession): Promise<ParsedAgentConversation> {
+export async function parseSession(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
   const adapter = adapters[session.source];
   if (!adapter) throw new UnknownSourceError(session.source);
-  return adapter.parseSession(session);
+  return adapter.parseSession(ctx, session);
 }
 
 /**

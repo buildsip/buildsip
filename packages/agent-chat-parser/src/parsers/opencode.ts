@@ -2,8 +2,7 @@ import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { z } from 'zod';
-import { logger } from '../logger';
-import type { ParsedAgentConversation, UnifiedSession } from '../types/index';
+import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
 import type {
   OpenCodeProject,
   OpenCodeSession,
@@ -55,7 +54,7 @@ function getOpenCodeStorageDir(): string {
   return path.join(getOpenCodeBaseDir(), 'storage');
 }
 
-function getOpenCodeDbPaths(): string[] {
+function getOpenCodeDbPaths(ctx: AgentChatParserContext): string[] {
   if (process.env.OPENCODE_DB) {
     return [process.env.OPENCODE_DB];
   }
@@ -83,7 +82,7 @@ function getOpenCodeDbPaths(): string[] {
       }
     }
   } catch (err) {
-    logger.debug('opencode: failed to inspect channel SQLite DB variants', baseDir, err);
+    ctx.log.debug('opencode: failed to inspect channel SQLite DB variants', baseDir, err);
   }
 
   return dbPaths;
@@ -101,14 +100,14 @@ function renderHighValuePart(partData: Record<string, unknown>): { content?: str
 /**
  * Check if SQLite DB exists and is usable
  */
-function hasSqliteDb(): boolean {
-  return getOpenCodeDbPaths().some((dbPath) => fs.existsSync(dbPath));
+function hasSqliteDb(ctx: AgentChatParserContext): boolean {
+  return getOpenCodeDbPaths(ctx).some((dbPath) => fs.existsSync(dbPath));
 }
 
 /**
  * Open SQLite database using node:sqlite (built-in)
  */
-function openDb(dbPath: string): { db: SqliteDatabase; close: () => void } | null {
+function openDb(ctx: AgentChatParserContext, dbPath: string): { db: SqliteDatabase; close: () => void } | null {
   try {
     // Dynamic import of node:sqlite to avoid issues on older Node versions
     const require = createRequire(import.meta.url);
@@ -116,7 +115,7 @@ function openDb(dbPath: string): { db: SqliteDatabase; close: () => void } | nul
     const db = new DatabaseSync(dbPath, { open: true, readOnly: true }) as SqliteDatabase;
     return { db, close: () => db.close() };
   } catch (err) {
-    logger.debug('opencode: failed to open SQLite database', dbPath, err);
+    ctx.log.debug('opencode: failed to open SQLite database', dbPath, err);
     return null;
   }
 }
@@ -124,12 +123,12 @@ function openDb(dbPath: string): { db: SqliteDatabase; close: () => void } | nul
 /**
  * Find all OpenCode session files
  */
-async function findSessionFiles(): Promise<string[]> {
+async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> {
   const sessionDir = path.join(getOpenCodeStorageDir(), 'session');
   const results: string[] = [];
-  for (const projectDir of listSubdirectories(sessionDir)) {
+  for (const projectDir of listSubdirectories(ctx, sessionDir)) {
     results.push(
-      ...findFiles(projectDir, {
+      ...findFiles(ctx, projectDir, {
         match: (entry) => entry.name.startsWith('ses_') && entry.name.endsWith('.json'),
         recursive: false,
       }),
@@ -141,15 +140,15 @@ async function findSessionFiles(): Promise<string[]> {
 /**
  * Parse a single OpenCode session file
  */
-function parseSessionFile(filePath: string): OpenCodeSession | null {
+function parseSessionFile(ctx: AgentChatParserContext, filePath: string): OpenCodeSession | null {
   try {
     const content = fs.readFileSync(filePath, 'utf8');
     const result = OpenCodeSessionSchema.safeParse(JSON.parse(content));
     if (result.success) return result.data;
-    logger.debug('opencode: session validation failed', filePath, result.error.message);
+    ctx.log.debug('opencode: session validation failed', filePath, result.error.message);
     return null;
   } catch (err) {
-    logger.debug('opencode: failed to parse session file', filePath, err);
+    ctx.log.debug('opencode: failed to parse session file', filePath, err);
     return null;
   }
 }
@@ -157,17 +156,17 @@ function parseSessionFile(filePath: string): OpenCodeSession | null {
 /**
  * Load project info to get worktree/cwd
  */
-function loadProjectInfo(projectId: string): OpenCodeProject | null {
+function loadProjectInfo(ctx: AgentChatParserContext, projectId: string): OpenCodeProject | null {
   const projectFile = path.join(getOpenCodeStorageDir(), 'project', `${projectId}.json`);
   try {
     if (fs.existsSync(projectFile)) {
       const content = fs.readFileSync(projectFile, 'utf8');
       const result = OpenCodeProjectSchema.safeParse(JSON.parse(content));
       if (result.success) return result.data;
-      logger.debug('opencode: project validation failed', projectFile, result.error.message);
+      ctx.log.debug('opencode: project validation failed', projectFile, result.error.message);
     }
   } catch (err) {
-    logger.debug('opencode: failed to parse project file', projectFile, err);
+    ctx.log.debug('opencode: failed to parse project file', projectFile, err);
   }
   return null;
 }
@@ -175,7 +174,7 @@ function loadProjectInfo(projectId: string): OpenCodeProject | null {
 /**
  * Get first user message from session messages
  */
-function getFirstUserMessage(sessionId: string): string {
+function getFirstUserMessage(ctx: AgentChatParserContext, sessionId: string): string {
   const messageDir = path.join(getOpenCodeStorageDir(), 'message', sessionId);
   if (!fs.existsSync(messageDir)) return '';
 
@@ -218,7 +217,7 @@ function getFirstUserMessage(sessionId: string): string {
       }
     }
   } catch (err) {
-    logger.debug('opencode: failed to read messages for session', sessionId, err);
+    ctx.log.debug('opencode: failed to read messages for session', sessionId, err);
   }
 
   return '';
@@ -227,25 +226,25 @@ function getFirstUserMessage(sessionId: string): string {
 /**
  * Parse all OpenCode sessions - SQLite first, then JSON fallback
  */
-export async function parseOpenCodeSessions(): Promise<UnifiedSession[]> {
+export async function parseOpenCodeSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
   // Try SQLite database first (newer OpenCode versions)
-  if (hasSqliteDb()) {
-    const sessions = parseSessionsFromSqlite();
+  if (hasSqliteDb(ctx)) {
+    const sessions = parseSessionsFromSqlite(ctx);
     if (sessions.length > 0) return sessions;
   }
 
   // Fallback to JSON files (older OpenCode versions)
-  return parseSessionsFromJson();
+  return parseSessionsFromJson(ctx);
 }
 
 /**
  * Parse sessions from SQLite database
  */
-function parseSessionsFromSqlite(): UnifiedSession[] {
+function parseSessionsFromSqlite(ctx: AgentChatParserContext): UnifiedSession[] {
   const sessionsById = new Map<string, UnifiedSession>();
 
-  for (const dbPath of getOpenCodeDbPaths()) {
-    const handle = openDb(dbPath);
+  for (const dbPath of getOpenCodeDbPaths(ctx)) {
+    const handle = openDb(ctx, dbPath);
     if (!handle) continue;
 
     const { db, close } = handle;
@@ -280,7 +279,7 @@ function parseSessionsFromSqlite(): UnifiedSession[] {
         }
       }
     } catch (err) {
-      logger.debug('opencode: SQLite session query failed', dbPath, err);
+      ctx.log.debug('opencode: SQLite session query failed', dbPath, err);
     } finally {
       close();
     }
@@ -292,20 +291,20 @@ function parseSessionsFromSqlite(): UnifiedSession[] {
 /**
  * Parse sessions from JSON files (legacy)
  */
-async function parseSessionsFromJson(): Promise<UnifiedSession[]> {
-  const files = await findSessionFiles();
+async function parseSessionsFromJson(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+  const files = await findSessionFiles(ctx);
   const sessions: UnifiedSession[] = [];
 
   for (const filePath of files) {
     try {
-      const session = parseSessionFile(filePath);
+      const session = parseSessionFile(ctx, filePath);
       if (!session || !session.id) continue;
 
       // Get project info for worktree
-      const project = loadProjectInfo(session.projectID);
+      const project = loadProjectInfo(ctx, session.projectID);
       const cwd = session.directory || project?.worktree || '';
 
-      const firstUserMessage = getFirstUserMessage(session.id);
+      const firstUserMessage = getFirstUserMessage(ctx, session.id);
       if (!session.title && !firstUserMessage) continue;
 
       sessions.push({
@@ -318,7 +317,7 @@ async function parseSessionsFromJson(): Promise<UnifiedSession[]> {
         originalPath: filePath,
       });
     } catch (err) {
-      logger.debug('opencode: skipping unparseable JSON session', filePath, err);
+      ctx.log.debug('opencode: skipping unparseable JSON session', filePath, err);
       // Skip files we can't parse
     }
   }
@@ -329,23 +328,23 @@ async function parseSessionsFromJson(): Promise<UnifiedSession[]> {
 /**
  * Read all messages from an OpenCode session - SQLite first, then JSON fallback
  */
-function readAllMessages(sessionId: string): MessageDraft[] {
+function readAllMessages(ctx: AgentChatParserContext, sessionId: string): MessageDraft[] {
   // Try SQLite first
-  if (hasSqliteDb()) {
-    const msgs = readMessagesFromSqlite(sessionId);
+  if (hasSqliteDb(ctx)) {
+    const msgs = readMessagesFromSqlite(ctx, sessionId);
     if (msgs.length > 0) return msgs;
   }
 
   // Fallback to JSON files
-  return readMessagesFromJson(sessionId);
+  return readMessagesFromJson(ctx, sessionId);
 }
 
 /**
  * Read messages from SQLite database
  */
-function readMessagesFromSqlite(sessionId: string): MessageDraft[] {
-  for (const dbPath of getOpenCodeDbPaths()) {
-    const handle = openDb(dbPath);
+function readMessagesFromSqlite(ctx: AgentChatParserContext, sessionId: string): MessageDraft[] {
+  for (const dbPath of getOpenCodeDbPaths(ctx)) {
+    const handle = openDb(ctx, dbPath);
     if (!handle) continue;
 
     const { db, close } = handle;
@@ -374,7 +373,7 @@ function readMessagesFromSqlite(sessionId: string): MessageDraft[] {
           try {
             rawPartData = JSON.parse(partRow.data);
           } catch (err) {
-            logger.debug('opencode: failed to parse SQLite part JSON', msgRow.id, err);
+            ctx.log.debug('opencode: failed to parse SQLite part JSON', msgRow.id, err);
             continue;
           }
 
@@ -396,7 +395,7 @@ function readMessagesFromSqlite(sessionId: string): MessageDraft[] {
 
       return messages;
     } catch (err) {
-      logger.debug('opencode: SQLite message query failed for session', dbPath, sessionId, err);
+      ctx.log.debug('opencode: SQLite message query failed for session', dbPath, sessionId, err);
     } finally {
       close();
     }
@@ -408,7 +407,7 @@ function readMessagesFromSqlite(sessionId: string): MessageDraft[] {
 /**
  * Read messages from JSON files (legacy)
  */
-function readMessagesFromJson(sessionId: string): MessageDraft[] {
+function readMessagesFromJson(ctx: AgentChatParserContext, sessionId: string): MessageDraft[] {
   const messages: MessageDraft[] = [];
   const messageDir = path.join(getOpenCodeStorageDir(), 'message', sessionId);
 
@@ -457,7 +456,7 @@ function readMessagesFromJson(sessionId: string): MessageDraft[] {
       }
     }
   } catch (err) {
-    logger.debug('opencode: failed to read JSON messages for session', sessionId, err);
+    ctx.log.debug('opencode: failed to read JSON messages for session', sessionId, err);
     // Ignore errors
   }
 
@@ -467,9 +466,12 @@ function readMessagesFromJson(sessionId: string): MessageDraft[] {
 /**
  * Extract visible messages from an OpenCode session.
  */
-export async function extractOpenCodeContext(session: UnifiedSession): Promise<ParsedAgentConversation> {
+export async function extractOpenCodeContext(
+  ctx: AgentChatParserContext,
+  session: UnifiedSession,
+): Promise<ParsedAgentConversation> {
   return {
     session,
-    messages: sequenceMessages(readAllMessages(session.id)),
+    messages: sequenceMessages(readAllMessages(ctx, session.id)),
   };
 }

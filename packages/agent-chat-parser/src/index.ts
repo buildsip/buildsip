@@ -4,7 +4,7 @@
 
 // ── Errors ───────────────────────────────────────────────────────────
 export {
-  ContinuesError,
+  AgentChatParserError,
   IndexError,
   ParseError,
   SessionNotFoundError,
@@ -13,19 +13,17 @@ export {
   UnknownSourceError,
 } from './errors';
 
-// ── Logger ───────────────────────────────────────────────────────────
-export type { LogLevel } from './logger';
-export { getLogLevel, logger, setLogLevel } from './logger';
-
 // ── Parsers ──────────────────────────────────────────────────────────
 export * from './parsers/index';
 
 // ── Types ────────────────────────────────────────────────────────────
 export type { ContentBlock, TextBlock } from './types/content-blocks';
 export type {
+  AgentChatParserContext,
   Message,
   ParsedAgentConversation,
   SessionSource,
+  SessionParseOptions,
   UnifiedSession,
 } from './types/index';
 export { TOOL_NAMES } from './types/tool-names';
