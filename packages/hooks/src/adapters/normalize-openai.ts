@@ -14,6 +14,7 @@ export function normalizeOpenAI<const TName extends string>(
   if (result.data.hook_event_name === "UserPromptSubmit") {
     return {
       data: {
+        // TODO: why no timestamp?
         cwd: [result.data.cwd],
         eventName: "UserPromptSubmit",
         message: {

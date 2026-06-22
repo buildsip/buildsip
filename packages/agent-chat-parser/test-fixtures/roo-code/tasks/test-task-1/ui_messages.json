@@ -1,0 +1,52 @@
+[
+  {
+    "ts": 1740471000000,
+    "type": "say",
+    "say": "text",
+    "text": "Set up a CI/CD pipeline with GitHub Actions for our Node.js project"
+  },
+  {
+    "ts": 1740471001000,
+    "type": "say",
+    "say": "api_req_started",
+    "text": "{\"request\":\"POST /v1/messages\",\"tokensIn\":120,\"tokensOut\":0,\"cost\":0}"
+  },
+  {
+    "ts": 1740471002000,
+    "type": "say",
+    "say": "text",
+    "text": "I'll create a GitHub Actions workflow with lint, test, and deploy stages...",
+    "partial": true
+  },
+  {
+    "ts": 1740471003000,
+    "type": "say",
+    "say": "text",
+    "text": "I'll create a GitHub Actions workflow with lint, test, and deploy stages. The pipeline will run on push to main and on pull requests.",
+    "partial": true
+  },
+  {
+    "ts": 1740471005000,
+    "type": "say",
+    "say": "api_req_started",
+    "text": "{\"request\":\"POST /v1/messages\",\"tokensIn\":300,\"tokensOut\":400,\"cacheWrites\":10,\"cacheReads\":50,\"cost\":0.002}"
+  },
+  {
+    "ts": 1740471006000,
+    "type": "say",
+    "say": "user_feedback",
+    "text": "Add a matrix strategy to test on Node 18 and 20"
+  },
+  {
+    "ts": 1740471007000,
+    "type": "say",
+    "say": "api_req_started",
+    "text": "{\"request\":\"POST /v1/messages\",\"tokensIn\":450,\"tokensOut\":350,\"cost\":0.003}"
+  },
+  {
+    "ts": 1740471008000,
+    "type": "say",
+    "say": "completion_result",
+    "text": "CI/CD pipeline created at .github/workflows/ci.yml with matrix testing on Node 18 and 20."
+  }
+]

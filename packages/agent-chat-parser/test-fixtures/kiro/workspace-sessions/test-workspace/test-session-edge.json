@@ -1,0 +1,38 @@
+{
+  "sessionId": "test-session-edge",
+  "workspacePath": "/Users/dev/edge-project",
+  "history": [
+    {
+      "message": {
+        "role": "user",
+        "content": [
+          { "type": "text", "text": "Refactor the database connection pool" }
+        ],
+        "id": "msg-1"
+      }
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": [
+          { "type": "text", "text": "I'll refactor the database connection pool to use a singleton pattern with configurable pool size." }
+        ],
+        "id": "msg-2"
+      }
+    },
+    {
+      "message": {
+        "role": "user",
+        "content": "",
+        "id": "msg-3"
+      }
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "The refactoring is complete. The pool now supports dynamic scaling between min and max connections.",
+        "id": "msg-4"
+      }
+    }
+  ]
+}

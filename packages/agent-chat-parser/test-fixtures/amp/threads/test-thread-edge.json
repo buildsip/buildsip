@@ -1,0 +1,44 @@
+{
+  "id": "test-thread-edge",
+  "created": 1740470500000,
+  "messages": [
+    {
+      "role": "user",
+      "messageId": 1,
+      "content": [
+        { "type": "text", "text": "Fix the null pointer bug in the checkout flow" }
+      ]
+    },
+    {
+      "role": "assistant",
+      "messageId": 2,
+      "content": []
+    },
+    {
+      "role": "assistant",
+      "messageId": 3,
+      "content": [
+        { "type": "text", "text": "" }
+      ]
+    },
+    {
+      "role": "user",
+      "messageId": 4,
+      "content": [
+        { "type": "text", "text": "Are you there?" }
+      ]
+    },
+    {
+      "role": "assistant",
+      "messageId": 5,
+      "content": [
+        { "type": "text", "text": "Sorry for the delay. I found the issue — the cart total is accessed before null checking." },
+        { "type": "tool_use", "text": "Reading src/checkout.ts" },
+        { "type": "provider", "provider": "anthropic" }
+      ]
+    }
+  ],
+  "usageLedger": {
+    "events": []
+  }
+}

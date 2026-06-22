@@ -1,0 +1,1154 @@
+/**
+ * Test fixtures - sanitized session data for supported parsers
+ */
+import { createHash } from 'crypto';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
+export interface FixtureDir {
+  root: string;
+  cleanup: () => void;
+}
+
+/**
+ * Create a temporary directory with Claude session fixtures
+ */
+export function createClaudeFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-claude-'));
+  const projectDir = path.join(root, '-test-project');
+  fs.mkdirSync(projectDir, { recursive: true });
+
+  const sessionFile = path.join(projectDir, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl');
+  const lines = [
+    JSON.stringify({
+      type: 'system',
+      uuid: '00000000-0000-0000-0000-000000000001',
+      timestamp: '2026-01-15T10:00:00.000Z',
+      sessionId: 'test-claude-session-1',
+      cwd: '/home/user/project',
+      gitBranch: 'main',
+      slug: 'test-session',
+      message: { role: 'system', content: 'Session started' },
+    }),
+    JSON.stringify({
+      type: 'user',
+      uuid: '00000000-0000-0000-0000-000000000002',
+      timestamp: '2026-01-15T10:00:01.000Z',
+      sessionId: 'test-claude-session-1',
+      cwd: '/home/user/project',
+      message: { role: 'user', content: 'Fix the authentication bug in login.ts' },
+    }),
+    JSON.stringify({
+      type: 'assistant',
+      uuid: '00000000-0000-0000-0000-000000000003',
+      timestamp: '2026-01-15T10:00:05.000Z',
+      sessionId: 'test-claude-session-1',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'I found the issue in login.ts. The token validation was missing.' }],
+      },
+    }),
+    JSON.stringify({
+      type: 'user',
+      uuid: '00000000-0000-0000-0000-000000000004',
+      timestamp: '2026-01-15T10:00:10.000Z',
+      sessionId: 'test-claude-session-1',
+      message: { role: 'user', content: 'Great, please also add error handling' },
+    }),
+    JSON.stringify({
+      type: 'assistant',
+      uuid: '00000000-0000-0000-0000-000000000005',
+      timestamp: '2026-01-15T10:00:15.000Z',
+      sessionId: 'test-claude-session-1',
+      message: {
+        role: 'assistant',
+        content: 'Done. I added try-catch blocks and proper error messages.',
+      },
+    }),
+  ];
+
+  fs.writeFileSync(sessionFile, lines.join('\n') + '\n');
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Copilot session fixtures
+ */
+export function createCopilotFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-copilot-'));
+  const sessionDir = path.join(root, 'test-session-001');
+  fs.mkdirSync(sessionDir, { recursive: true });
+
+  // workspace.yaml
+  const workspace = `id: test-copilot-session-1
+cwd: /home/user/project
+summary: Fix authentication bug
+summary_count: 0
+created_at: 2026-01-15T10:00:00.000Z
+updated_at: 2026-01-15T10:05:00.000Z
+`;
+  fs.writeFileSync(path.join(sessionDir, 'workspace.yaml'), workspace);
+
+  // events.jsonl
+  const events = [
+    JSON.stringify({
+      type: 'session.start',
+      data: {
+        sessionId: 'test-copilot-session-1',
+        version: 1,
+        producer: 'copilot-agent',
+        copilotVersion: '0.0.400',
+        startTime: '2026-01-15T10:00:00.000Z',
+        context: { cwd: '/home/user/project' },
+        selectedModel: 'claude-sonnet-4',
+      },
+      id: 'evt-001',
+      timestamp: '2026-01-15T10:00:00.000Z',
+      parentId: null,
+    }),
+    JSON.stringify({
+      type: 'user.message',
+      data: {
+        content: 'Fix the authentication bug in login.ts',
+        transformedContent: 'Fix the authentication bug in login.ts',
+      },
+      id: 'evt-002',
+      timestamp: '2026-01-15T10:00:01.000Z',
+      parentId: 'evt-001',
+    }),
+    JSON.stringify({
+      type: 'assistant.message',
+      data: {
+        messageId: 'msg-001',
+        content: 'I found the issue in login.ts. The token validation was missing.',
+      },
+      id: 'evt-003',
+      timestamp: '2026-01-15T10:00:05.000Z',
+      parentId: 'evt-002',
+    }),
+    JSON.stringify({
+      type: 'user.message',
+      data: {
+        content: 'Great, please also add error handling',
+      },
+      id: 'evt-004',
+      timestamp: '2026-01-15T10:00:10.000Z',
+      parentId: 'evt-003',
+    }),
+    JSON.stringify({
+      type: 'assistant.message',
+      data: {
+        messageId: 'msg-002',
+        content: 'Done. I added try-catch blocks and proper error messages.',
+      },
+      id: 'evt-005',
+      timestamp: '2026-01-15T10:00:15.000Z',
+      parentId: 'evt-004',
+    }),
+  ];
+
+  fs.writeFileSync(path.join(sessionDir, 'events.jsonl'), events.join('\n') + '\n');
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Gemini session fixtures
+ */
+export function createGeminiFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-gemini-'));
+  const projectHashDir = path.join(root, 'abc123hash');
+  const chatsDir = path.join(projectHashDir, 'chats');
+  fs.mkdirSync(chatsDir, { recursive: true });
+
+  const session = {
+    sessionId: 'test-gemini-session-1',
+    projectHash: 'abc123hash',
+    startTime: '2026-01-15T10:00:00.000Z',
+    lastUpdated: '2026-01-15T10:05:00.000Z',
+    messages: [
+      {
+        id: 'msg-001',
+        timestamp: '2026-01-15T10:00:01.000Z',
+        type: 'user',
+        content: 'Fix the authentication bug in login.ts',
+      },
+      {
+        id: 'msg-003',
+        timestamp: '2026-01-15T10:00:08.000Z',
+        type: 'gemini',
+        content: 'I found the issue in login.ts. The token validation was missing.',
+      },
+      {
+        id: 'msg-004',
+        timestamp: '2026-01-15T10:00:10.000Z',
+        type: 'user',
+        content: 'Great, please also add error handling',
+      },
+      {
+        id: 'msg-005',
+        timestamp: '2026-01-15T10:00:15.000Z',
+        type: 'gemini',
+        content: 'Done. I added try-catch blocks and proper error messages.',
+      },
+    ],
+  };
+
+  fs.writeFileSync(path.join(chatsDir, 'session-2026-01-15T10-00-test1234.json'), JSON.stringify(session, null, 2));
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Codex session fixtures
+ */
+export function createCodexFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-codex-'));
+  const dateDir = path.join(root, '2026', '01', '15');
+  fs.mkdirSync(dateDir, { recursive: true });
+
+  const lines = [
+    JSON.stringify({
+      timestamp: '2026-01-15T10:00:00.000Z',
+      type: 'session_meta',
+      payload: {
+        id: 'test-codex-uuid-1234',
+        timestamp: '2026-01-15T10:00:00.000Z',
+        cwd: '/home/user/project',
+        originator: 'codex_cli_rs',
+        cli_version: '0.93.0',
+        source: 'cli',
+        git: {
+          branch: 'main',
+          repository_url: 'https://github.com/user/project.git',
+        },
+      },
+    }),
+    JSON.stringify({
+      timestamp: '2026-01-15T10:00:01.000Z',
+      type: 'event_msg',
+      payload: {
+        type: 'user_message',
+        message: 'Fix the authentication bug in login.ts',
+      },
+    }),
+    JSON.stringify({
+      timestamp: '2026-01-15T10:00:05.000Z',
+      type: 'event_msg',
+      payload: {
+        type: 'agent_message',
+        message: 'I found the issue in login.ts. The token validation was missing.',
+      },
+    }),
+    JSON.stringify({
+      timestamp: '2026-01-15T10:00:10.000Z',
+      type: 'event_msg',
+      payload: {
+        type: 'user_message',
+        message: 'Great, please also add error handling',
+      },
+    }),
+    JSON.stringify({
+      timestamp: '2026-01-15T10:00:15.000Z',
+      type: 'event_msg',
+      payload: {
+        type: 'agent_message',
+        message: 'Done. I added try-catch blocks and proper error messages.',
+      },
+    }),
+  ];
+
+  const filename = 'rollout-2026-01-15T10-00-00-test-codex-uuid-1234.jsonl';
+  fs.writeFileSync(path.join(dateDir, filename), lines.join('\n') + '\n');
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary SQLite database with OpenCode session fixtures
+ */
+export function createOpenCodeSqliteFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-opencode-'));
+  const dbPath = path.join(root, 'opencode.db');
+
+  // Use node:sqlite to create the DB
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync(dbPath);
+
+  db.exec(`
+    CREATE TABLE project (
+      id TEXT PRIMARY KEY,
+      worktree TEXT NOT NULL,
+      vcs TEXT,
+      name TEXT,
+      icon_url TEXT,
+      icon_color TEXT,
+      time_created INTEGER NOT NULL,
+      time_updated INTEGER NOT NULL,
+      time_initialized INTEGER,
+      sandboxes TEXT NOT NULL DEFAULT '[]',
+      commands TEXT
+    );
+    CREATE TABLE session (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      parent_id TEXT,
+      slug TEXT NOT NULL,
+      directory TEXT NOT NULL,
+      title TEXT NOT NULL,
+      version TEXT NOT NULL,
+      share_url TEXT,
+      summary_additions INTEGER,
+      summary_deletions INTEGER,
+      summary_files INTEGER,
+      summary_diffs TEXT,
+      revert TEXT,
+      permission TEXT,
+      time_created INTEGER NOT NULL,
+      time_updated INTEGER NOT NULL,
+      time_compacting INTEGER,
+      time_archived INTEGER,
+      FOREIGN KEY (project_id) REFERENCES project(id)
+    );
+    CREATE TABLE message (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      time_created INTEGER NOT NULL,
+      time_updated INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES session(id)
+    );
+    CREATE TABLE part (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      time_created INTEGER NOT NULL,
+      time_updated INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      FOREIGN KEY (message_id) REFERENCES message(id)
+    );
+  `);
+
+  const now = Date.now();
+
+  // Insert project
+  db.prepare('INSERT INTO project VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    'proj_test1',
+    '/home/user/project',
+    'git',
+    'project',
+    null,
+    null,
+    now - 10000,
+    now,
+    null,
+    '[]',
+    null,
+  );
+
+  // Insert session
+  db.prepare('INSERT INTO session VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    'ses_test1',
+    'proj_test1',
+    null,
+    'test-session',
+    '/home/user/project',
+    'Fix authentication bug',
+    '1.2.0',
+    null,
+    2,
+    0,
+    1,
+    null,
+    null,
+    null,
+    now - 5000,
+    now,
+    null,
+    null,
+  );
+
+  // Insert user message
+  db.prepare('INSERT INTO message VALUES (?, ?, ?, ?, ?)').run(
+    'msg_user1',
+    'ses_test1',
+    now - 4000,
+    now - 4000,
+    JSON.stringify({ role: 'user', time: { created: now - 4000 } }),
+  );
+  db.prepare('INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)').run(
+    'prt_user1',
+    'msg_user1',
+    'ses_test1',
+    now - 4000,
+    now - 4000,
+    JSON.stringify({ type: 'text', text: 'Fix the authentication bug in login.ts' }),
+  );
+
+  // Insert assistant message
+  db.prepare('INSERT INTO message VALUES (?, ?, ?, ?, ?)').run(
+    'msg_asst1',
+    'ses_test1',
+    now - 3000,
+    now - 3000,
+    JSON.stringify({
+      role: 'assistant',
+      time: { created: now - 3000, completed: now - 2500 },
+      modelID: 'claude-opus-4.6',
+    }),
+  );
+  db.prepare('INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)').run(
+    'prt_asst1',
+    'msg_asst1',
+    'ses_test1',
+    now - 3000,
+    now - 3000,
+    JSON.stringify({ type: 'text', text: 'I found the issue in login.ts. The token validation was missing.' }),
+  );
+
+  // Insert another user message
+  db.prepare('INSERT INTO message VALUES (?, ?, ?, ?, ?)').run(
+    'msg_user2',
+    'ses_test1',
+    now - 2000,
+    now - 2000,
+    JSON.stringify({ role: 'user', time: { created: now - 2000 } }),
+  );
+  db.prepare('INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)').run(
+    'prt_user2',
+    'msg_user2',
+    'ses_test1',
+    now - 2000,
+    now - 2000,
+    JSON.stringify({ type: 'text', text: 'Great, please also add error handling' }),
+  );
+
+  // Insert another assistant message
+  db.prepare('INSERT INTO message VALUES (?, ?, ?, ?, ?)').run(
+    'msg_asst2',
+    'ses_test1',
+    now - 1000,
+    now - 1000,
+    JSON.stringify({ role: 'assistant', time: { created: now - 1000, completed: now - 500 } }),
+  );
+  db.prepare('INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)').run(
+    'prt_asst2',
+    'msg_asst2',
+    'ses_test1',
+    now - 1000,
+    now - 1000,
+    JSON.stringify({ type: 'text', text: 'Done. I added try-catch blocks and proper error messages.' }),
+  );
+
+  db.close();
+
+  // Also create legacy JSON storage dir (empty)
+  fs.mkdirSync(path.join(root, 'storage', 'session', 'proj_test1'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'storage', 'message'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'storage', 'part'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'storage', 'project'), { recursive: true });
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary `.crush/crush.db` SQLite fixture matching the schema the
+ * Crush parser introspects (see src/parsers/crush.ts). The fixture lives under
+ * `<root>/project/.crush/crush.db` so cwd-ancestor discovery resolves the
+ * project at `<root>/project`. Mirrors `createOpenCodeSqliteFixture` for the
+ * other SQLite-backed tool.
+ */
+export function createCrushFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-crush-'));
+  const projectRoot = path.join(root, 'project');
+  const dataDir = path.join(projectRoot, '.crush');
+  const dbPath = path.join(dataDir, 'crush.db');
+  fs.mkdirSync(dataDir, { recursive: true });
+
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync(dbPath);
+
+  db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY,
+      parent_session_id TEXT,
+      title TEXT NOT NULL,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      cost REAL NOT NULL DEFAULT 0.0,
+      updated_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      summary_message_id TEXT,
+      todos TEXT
+    );
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      parts TEXT NOT NULL DEFAULT '[]',
+      model TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      finished_at INTEGER,
+      provider TEXT,
+      is_summary_message INTEGER DEFAULT 0 NOT NULL
+    );
+  `);
+
+  // Use unix-second epochs (Crush writes strftime('%s')).
+  const t0 = 1_734_000_000;
+  db.prepare(
+    `INSERT INTO sessions (
+      id, parent_session_id, title, message_count, cost, updated_at, created_at, summary_message_id, todos
+    ) VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, NULL)`,
+  ).run('test-crush-session-1', 'Fix auth bug', 4, 0.5, t0 + 40, t0);
+
+  const insertMessage = db.prepare(
+    `INSERT INTO messages (
+      id, session_id, role, parts, model, provider, is_summary_message,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+  );
+  insertMessage.run(
+    'msg-user-1',
+    'test-crush-session-1',
+    'user',
+    JSON.stringify([{ type: 'text', data: { text: 'Fix the authentication bug in login.ts' } }]),
+    null,
+    null,
+    t0 + 10,
+    t0 + 10,
+  );
+  insertMessage.run(
+    'msg-asst-1',
+    'test-crush-session-1',
+    'assistant',
+    JSON.stringify([
+      { type: 'text', data: { text: 'I found the issue in login.ts. The token validation was missing.' } },
+    ]),
+    'claude-sonnet-4.5',
+    'anthropic',
+    t0 + 20,
+    t0 + 20,
+  );
+  insertMessage.run(
+    'msg-user-2',
+    'test-crush-session-1',
+    'user',
+    JSON.stringify([{ type: 'text', data: { text: 'Great, please also add error handling' } }]),
+    null,
+    null,
+    t0 + 30,
+    t0 + 30,
+  );
+  insertMessage.run(
+    'msg-asst-2',
+    'test-crush-session-1',
+    'assistant',
+    JSON.stringify([{ type: 'text', data: { text: 'Done. I added try-catch blocks and proper error messages.' } }]),
+    'claude-sonnet-4.5',
+    'anthropic',
+    t0 + 40,
+    t0 + 40,
+  );
+
+  db.close();
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Droid session fixtures
+ */
+export function createDroidFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-droid-'));
+  const workspaceDir = path.join(root, '-home-user-project');
+  fs.mkdirSync(workspaceDir, { recursive: true });
+
+  const sessionId = 'dddddddd-1111-2222-3333-444444444444';
+
+  // Create .settings.json
+  const settings = {
+    assistantActiveTimeMs: 15000,
+    model: 'claude-opus-4-6',
+    interactionMode: 'auto',
+    autonomyMode: 'auto-low',
+  };
+  fs.writeFileSync(path.join(workspaceDir, `${sessionId}.settings.json`), JSON.stringify(settings, null, 2));
+
+  // Create JSONL session
+  const lines = [
+    JSON.stringify({
+      type: 'session_start',
+      id: sessionId,
+      title: 'Fix authentication bug',
+      sessionTitle: 'Auth Bug Fix',
+      owner: 'testuser',
+      version: 2,
+      cwd: '/home/user/project',
+    }),
+    JSON.stringify({
+      type: 'message',
+      id: 'msg-001',
+      timestamp: '2026-01-15T10:00:01.000Z',
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: 'Fix the authentication bug in login.ts' }],
+      },
+    }),
+    JSON.stringify({
+      type: 'message',
+      id: 'msg-006',
+      timestamp: '2026-01-15T10:00:10.000Z',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'I found the issue in login.ts. The token validation was missing.' }],
+      },
+    }),
+    JSON.stringify({
+      type: 'message',
+      id: 'msg-007',
+      timestamp: '2026-01-15T10:00:12.000Z',
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: 'Great, please also add error handling' }],
+      },
+    }),
+    JSON.stringify({
+      type: 'message',
+      id: 'msg-008',
+      timestamp: '2026-01-15T10:00:15.000Z',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Done. I added try-catch blocks and proper error messages.' }],
+      },
+    }),
+    JSON.stringify({
+      type: 'todo_state',
+      id: 'todo-001',
+      timestamp: '2026-01-15T10:00:15.000Z',
+      todos: {
+        todos: '1. [completed] Fix token validation\n2. [in_progress] Add error handling\n3. [pending] Write tests',
+      },
+      messageIndex: 3,
+    }),
+  ];
+
+  fs.writeFileSync(path.join(workspaceDir, `${sessionId}.jsonl`), lines.join('\n') + '\n');
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Cursor agent-transcript fixtures
+ */
+export function createCursorFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-cursor-'));
+  const projectDir = path.join(root, '-test-project');
+  const transcriptsDir = path.join(projectDir, 'agent-transcripts');
+  const sessionId = 'cccccccc-1111-2222-3333-444444444444';
+  const sessionDir = path.join(transcriptsDir, sessionId);
+  fs.mkdirSync(sessionDir, { recursive: true });
+
+  const lines = [
+    JSON.stringify({
+      role: 'user',
+      message: {
+        content: [{ type: 'text', text: '<user_query>\nFix the authentication bug in login.ts\n</user_query>' }],
+      },
+    }),
+    JSON.stringify({
+      role: 'assistant',
+      message: {
+        content: [{ type: 'text', text: "I'll look into the login.ts file to find the authentication bug." }],
+      },
+    }),
+    JSON.stringify({
+      role: 'assistant',
+      message: {
+        content: [{ type: 'text', text: 'I found the issue in login.ts. The token validation was missing.' }],
+      },
+    }),
+    JSON.stringify({
+      role: 'user',
+      message: {
+        content: [{ type: 'text', text: '<user_query>\nGreat, please also add error handling\n</user_query>' }],
+      },
+    }),
+    JSON.stringify({
+      role: 'assistant',
+      message: {
+        content: [{ type: 'text', text: 'Done. I added try-catch blocks and proper error messages.' }],
+      },
+    }),
+  ];
+
+  fs.writeFileSync(path.join(sessionDir, `${sessionId}.jsonl`), lines.join('\n') + '\n');
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Amp session fixtures
+ */
+export function createAmpFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-amp-'));
+
+  const session = {
+    id: 'thread-amp-test-1',
+    created: 1705312800000,
+    messages: [
+      { role: 'user', content: 'Fix the authentication bug in login.ts' },
+      {
+        role: 'assistant',
+        content: 'I found the issue in login.ts. The token validation was missing.',
+        model: 'claude-sonnet-4',
+      },
+      { role: 'user', content: 'Great, please also add error handling' },
+      {
+        role: 'assistant',
+        content: 'Done. I added try-catch blocks and proper error messages.',
+        model: 'claude-sonnet-4',
+      },
+    ],
+  };
+
+  fs.writeFileSync(path.join(root, 'thread-amp-test-1.json'), JSON.stringify(session, null, 2));
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Kiro session fixtures
+ */
+export function createKiroFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-kiro-'));
+
+  const session = {
+    workspacePath: '/home/user/project',
+    selectedModel: 'claude-sonnet-4',
+    history: [
+      { role: 'human', content: 'Fix the authentication bug in login.ts' },
+      { role: 'assistant', content: 'I found the issue in login.ts. The token validation was missing.' },
+      { role: 'human', content: 'Great, please also add error handling' },
+      { role: 'assistant', content: 'Done. I added try-catch blocks and proper error messages.' },
+    ],
+  };
+
+  fs.writeFileSync(path.join(root, 'session-kiro-test-1.json'), JSON.stringify(session, null, 2));
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Cline session fixtures (ui_messages.json format).
+ * This format is shared by cline, roo-code, and kilo-code.
+ */
+export function createClineFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-cline-'));
+  const taskDir = path.join(root, 'task-cline-test-1');
+  fs.mkdirSync(taskDir, { recursive: true });
+
+  const messages = [
+    { ts: 1705312800000, type: 'say', say: 'task', text: 'Fix the authentication bug in login.ts' },
+    {
+      ts: 1705312801000,
+      type: 'say',
+      say: 'text',
+      text: 'I found the issue in login.ts. The token validation was missing.',
+    },
+    { ts: 1705312810000, type: 'say', say: 'task', text: 'Great, please also add error handling' },
+    { ts: 1705312811000, type: 'say', say: 'text', text: 'Done. I added try-catch blocks and proper error messages.' },
+  ];
+
+  fs.writeFileSync(path.join(taskDir, 'ui_messages.json'), JSON.stringify(messages, null, 2));
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Roo Code session fixtures (same format as Cline)
+ */
+export function createRooCodeFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-roo-code-'));
+  const taskDir = path.join(root, 'task-roo-code-test-1');
+  fs.mkdirSync(taskDir, { recursive: true });
+
+  const messages = [
+    { ts: 1705312900000, type: 'say', say: 'task', text: 'Fix the authentication bug in login.ts' },
+    {
+      ts: 1705312901000,
+      type: 'say',
+      say: 'text',
+      text: 'I found the issue in login.ts. The token validation was missing.',
+    },
+    { ts: 1705312910000, type: 'say', say: 'task', text: 'Great, please also add error handling' },
+    { ts: 1705312911000, type: 'say', say: 'text', text: 'Done. I added try-catch blocks and proper error messages.' },
+  ];
+
+  fs.writeFileSync(path.join(taskDir, 'ui_messages.json'), JSON.stringify(messages, null, 2));
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Kilo Code session fixtures (same format as Cline)
+ */
+export function createKiloCodeFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-kilo-code-'));
+  const taskDir = path.join(root, 'task-kilo-code-test-1');
+  fs.mkdirSync(taskDir, { recursive: true });
+
+  const messages = [
+    { ts: 1705313000000, type: 'say', say: 'task', text: 'Fix the authentication bug in login.ts' },
+    {
+      ts: 1705313001000,
+      type: 'say',
+      say: 'text',
+      text: 'I found the issue in login.ts. The token validation was missing.',
+    },
+    { ts: 1705313010000, type: 'say', say: 'task', text: 'Great, please also add error handling' },
+    { ts: 1705313011000, type: 'say', say: 'text', text: 'Done. I added try-catch blocks and proper error messages.' },
+  ];
+
+  fs.writeFileSync(path.join(taskDir, 'ui_messages.json'), JSON.stringify(messages, null, 2));
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Antigravity session fixtures
+ * matching the current root layout: conversations/*.pb + brain/<id>/ artifacts.
+ */
+export function createAntigravityFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-antigravity-'));
+  const sessionId = 'test-antigravity-session-1';
+
+  const conversationsDir = path.join(root, 'conversations');
+  const brainDir = path.join(root, 'brain', sessionId);
+  const codeTrackerDir = path.join(root, 'code_tracker', 'active');
+  fs.mkdirSync(conversationsDir, { recursive: true });
+  fs.mkdirSync(brainDir, { recursive: true });
+  fs.mkdirSync(codeTrackerDir, { recursive: true });
+
+  fs.writeFileSync(path.join(conversationsDir, `${sessionId}.pb`), Buffer.from([0x08, 0x01]));
+  fs.writeFileSync(
+    path.join(brainDir, 'task.md'),
+    '# Task: Fix authentication bug in login.ts\n\n- [ ] Add error handling\n',
+  );
+  fs.writeFileSync(
+    path.join(brainDir, 'implementation_plan.md'),
+    '# Implementation Plan\n\nI found the issue in login.ts. The token validation was missing.\n',
+  );
+  fs.writeFileSync(
+    path.join(brainDir, 'walkthrough.md'),
+    'Done. I added try-catch blocks and proper error messages.\n',
+  );
+  fs.writeFileSync(path.join(codeTrackerDir, 'snapshot.json'), JSON.stringify({ file: 'login.ts' }));
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Kimi session fixtures
+ *
+ * Mirrors Kimi CLI's share-dir layout:
+ *   ~/.kimi/kimi.json
+ *   ~/.kimi/sessions/<md5(work_dir)>/<session_id>/{context.jsonl, metadata.json, wire.jsonl, state.json}
+ */
+export function createKimiFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-kimi-'));
+  const kimiDir = path.join(root, '.kimi');
+
+  const workDirPath = '/home/user/project';
+  const sessionId = 'test-kimi-session-1';
+  const workDirHash = createHash('md5').update(workDirPath, 'utf8').digest('hex');
+  const sessionDir = path.join(kimiDir, 'sessions', workDirHash, sessionId);
+  fs.mkdirSync(sessionDir, { recursive: true });
+
+  // ~/.kimi/kimi.json — work dir index used for resolving cwd from workdir hash
+  fs.writeFileSync(
+    path.join(kimiDir, 'kimi.json'),
+    JSON.stringify(
+      {
+        work_dirs: [{ path: workDirPath, kaos: 'local', last_session_id: sessionId }],
+      },
+      null,
+      2,
+    ),
+  );
+
+  // context.jsonl — includes string + block-array content plus special markers
+  const contextLines = [
+    JSON.stringify({
+      role: 'user',
+      content: [{ type: 'text', text: 'Fix the authentication bug in login.ts' }],
+    }),
+    JSON.stringify({
+      role: 'assistant',
+      content: [
+        { type: 'think', think: 'Need to inspect login.ts and validate token flow first.' },
+        { type: 'text', text: 'I found the issue in login.ts. The token validation was missing.' },
+      ],
+    }),
+    JSON.stringify({ role: '_checkpoint', id: 0 }),
+    JSON.stringify({
+      role: 'user',
+      content: 'Great, please also add error handling',
+    }),
+    JSON.stringify({
+      role: 'assistant',
+      content: 'Done. I added try-catch blocks and proper error messages.',
+    }),
+  ];
+  fs.writeFileSync(path.join(sessionDir, 'context.jsonl'), contextLines.join('\n') + '\n');
+
+  // metadata.json — optional in Kimi, but included here for schema/compat coverage
+  fs.writeFileSync(
+    path.join(sessionDir, 'metadata.json'),
+    JSON.stringify(
+      {
+        session_id: sessionId,
+        title: 'Fix auth bug',
+        title_generated: false,
+        archived: false,
+        archived_at: null,
+        wire_mtime: null,
+      },
+      null,
+      2,
+    ),
+  );
+
+  // wire.jsonl/state.json — present in real Kimi CLI session directories
+  fs.writeFileSync(
+    path.join(sessionDir, 'wire.jsonl'),
+    `${JSON.stringify({ timestamp: 1736935200, message: { type: 'TurnBegin', payload: { user_input: 'Fix the authentication bug in login.ts' } } })}\n`,
+  );
+  fs.writeFileSync(
+    path.join(sessionDir, 'state.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        approval: { yolo: false, auto_approve_actions: [] },
+        dynamic_subagents: [],
+        additional_dirs: [],
+      },
+      null,
+      2,
+    ),
+  );
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create a temporary directory with Qwen Code session fixtures
+ * Storage: ~/.qwen/projects/<sanitized-cwd>/chats/<sessionId>.jsonl
+ * sanitizeCwd replaces [^a-zA-Z0-9] with '-'
+ */
+export function createQwenCodeFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-qwen-code-'));
+  // sanitizeCwd('/home/user/project') → '-home-user-project'
+  const sanitizedCwd = '/home/user/project'.replace(/[^a-zA-Z0-9]/g, '-');
+  const chatsDir = path.join(root, sanitizedCwd, 'chats');
+  fs.mkdirSync(chatsDir, { recursive: true });
+
+  const sessionId = 'test-qwen-code-session-1';
+  const lines = [
+    JSON.stringify({
+      uuid: '00000000-0000-0000-0000-000000000001',
+      parentUuid: null,
+      sessionId,
+      timestamp: '2026-01-15T10:00:01.000Z',
+      type: 'user',
+      cwd: '/home/user/project',
+      version: '1.0.0',
+      gitBranch: 'main',
+      message: { role: 'user', parts: [{ text: 'Fix the authentication bug in login.ts' }] },
+    }),
+    JSON.stringify({
+      uuid: '00000000-0000-0000-0000-000000000002',
+      parentUuid: '00000000-0000-0000-0000-000000000001',
+      sessionId,
+      timestamp: '2026-01-15T10:00:05.000Z',
+      type: 'assistant',
+      cwd: '/home/user/project',
+      version: '1.0.0',
+      model: 'qwen3-coder',
+      message: {
+        role: 'model',
+        parts: [
+          { text: 'Let me think about this...', thought: true },
+          { text: 'I found the issue in login.ts. The token validation was missing.' },
+        ],
+      },
+    }),
+    JSON.stringify({
+      uuid: '00000000-0000-0000-0000-000000000003',
+      parentUuid: '00000000-0000-0000-0000-000000000002',
+      sessionId,
+      timestamp: '2026-01-15T10:00:10.000Z',
+      type: 'user',
+      cwd: '/home/user/project',
+      version: '1.0.0',
+      message: { role: 'user', parts: [{ text: 'Great, please also add error handling' }] },
+    }),
+    JSON.stringify({
+      uuid: '00000000-0000-0000-0000-000000000004',
+      parentUuid: '00000000-0000-0000-0000-000000000003',
+      sessionId,
+      timestamp: '2026-01-15T10:00:15.000Z',
+      type: 'assistant',
+      cwd: '/home/user/project',
+      version: '1.0.0',
+      model: 'qwen3-coder',
+      message: {
+        role: 'model',
+        parts: [{ text: 'Done. I added try-catch blocks and proper error messages.' }],
+      },
+    }),
+  ];
+
+  fs.writeFileSync(path.join(chatsDir, `${sessionId}.jsonl`), lines.join('\n') + '\n');
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Create OpenCode JSON-only fixture (legacy format)
+ */
+export function createOpenCodeJsonFixture(): FixtureDir {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'test-opencode-json-'));
+  const storageDir = path.join(root, 'storage');
+  const projectId = 'proj_test1';
+  const sessionId = 'ses_test_json_1';
+
+  // Create session file
+  const sessionDir = path.join(storageDir, 'session', projectId);
+  fs.mkdirSync(sessionDir, { recursive: true });
+  const now = Date.now();
+  fs.writeFileSync(
+    path.join(sessionDir, `${sessionId}.json`),
+    JSON.stringify({
+      id: sessionId,
+      slug: 'json-test-session',
+      version: '1.1.47',
+      projectID: projectId,
+      directory: '/home/user/project',
+      title: 'Fix authentication bug (JSON)',
+      time: { created: now - 5000, updated: now },
+    }),
+  );
+
+  // Create project file
+  const projectDir = path.join(storageDir, 'project');
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(projectDir, `${projectId}.json`),
+    JSON.stringify({ id: projectId, worktree: '/home/user/project' }),
+  );
+
+  // Create message files
+  const msgDir = path.join(storageDir, 'message', sessionId);
+  fs.mkdirSync(msgDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(msgDir, 'msg_u1.json'),
+    JSON.stringify({
+      id: 'msg_u1',
+      sessionID: sessionId,
+      role: 'user',
+      time: { created: now - 4000 },
+    }),
+  );
+  fs.writeFileSync(
+    path.join(msgDir, 'msg_a1.json'),
+    JSON.stringify({
+      id: 'msg_a1',
+      sessionID: sessionId,
+      role: 'assistant',
+      time: { created: now - 3000, completed: now - 2500 },
+    }),
+  );
+
+  // Create part files
+  const partDirU1 = path.join(storageDir, 'part', 'msg_u1');
+  fs.mkdirSync(partDirU1, { recursive: true });
+  fs.writeFileSync(
+    path.join(partDirU1, 'prt_u1.json'),
+    JSON.stringify({
+      id: 'prt_u1',
+      sessionID: sessionId,
+      messageID: 'msg_u1',
+      type: 'text',
+      text: 'Fix the authentication bug in login.ts',
+    }),
+  );
+
+  const partDirA1 = path.join(storageDir, 'part', 'msg_a1');
+  fs.mkdirSync(partDirA1, { recursive: true });
+  fs.writeFileSync(
+    path.join(partDirA1, 'prt_a1.json'),
+    JSON.stringify({
+      id: 'prt_a1',
+      sessionID: sessionId,
+      messageID: 'msg_a1',
+      type: 'text',
+      text: 'I found the issue. The token validation was missing.',
+    }),
+  );
+
+  return {
+    root,
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
