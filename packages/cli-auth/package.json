@@ -2,6 +2,7 @@
   "name": "@buildsip/cli-auth",
   "version": "0.0.0",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

@@ -13,13 +13,15 @@ import { registerWhoamiCommand } from "./commands/whoami";
 import { registerCleanupCommand } from "./commands/cleanup";
 import { log } from "./log";
 import { loadEnvFile } from "node:process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { findPackageRoot } from "./package-root";
 import { join } from "node:path";
 
+const packageRoot = findPackageRoot();
+
 const program = new Command()
   .name("buildsip")
-  .version("0.0.0")
+  .version(JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")).version)
   .option("-d, --debug", "Print debug output.");
 
 program.hook("preAction", (command) => {
@@ -41,7 +43,7 @@ program.action(() => {
 });
 
 try {
-  const envPath = join(findPackageRoot(), ".env");
+  const envPath = join(packageRoot, ".env");
 
   if (existsSync(envPath)) {
     loadEnvFile(envPath);

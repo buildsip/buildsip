@@ -47,15 +47,6 @@ importers:
       '@better-fetch/fetch':
         specifier: ^1.1.21
         version: 1.3.1
-      '@buildsip/agent-chat-parser':
-        specifier: workspace:*
-        version: link:../agent-chat-parser
-      '@buildsip/cli-auth':
-        specifier: workspace:*
-        version: link:../cli-auth
-      '@buildsip/hooks':
-        specifier: workspace:*
-        version: link:../hooks
       '@clack/prompts':
         specifier: ^1.5.1
         version: 1.5.1
@@ -75,6 +66,15 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@buildsip/agent-chat-parser':
+        specifier: workspace:*
+        version: link:../agent-chat-parser
+      '@buildsip/cli-auth':
+        specifier: workspace:*
+        version: link:../cli-auth
+      '@buildsip/hooks':
+        specifier: workspace:*
+        version: link:../hooks
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config

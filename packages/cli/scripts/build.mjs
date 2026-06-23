@@ -21,8 +21,10 @@ await build({
   format: "esm",
   outfile: join(distDir, "index.js"),
   external: [
+    "@better-fetch/fetch",
     "@clack/prompts",
     "commander",
+    "conf",
     "execa",
     "open",
     "picocolors",

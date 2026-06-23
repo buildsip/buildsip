@@ -1,22 +1,38 @@
 {
   "name": "buildsip",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "AI chats -> shareable stories",
-  "private": true,
+  "license": "UNLICENSED",
   "type": "module",
+  "homepage": "https://github.com/buildsip/buildsip#readme",
+  "bugs": {
+    "url": "https://github.com/buildsip/buildsip/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/buildsip/buildsip.git",
+    "directory": "packages/cli"
+  },
   "bin": {
     "buildsip": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
     "buildsip": "pnpm build && node ./dist/index.js",
+    "prepack": "pnpm build",
     "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.5.0"
   },
   "dependencies": {
     "@better-fetch/fetch": "^1.1.21",
-    "@buildsip/agent-chat-parser": "workspace:*",
-    "@buildsip/cli-auth": "workspace:*",
-    "@buildsip/hooks": "workspace:*",
     "@clack/prompts": "^1.5.1",
     "commander": "^14.0.3",
     "conf": "^15.1.0",
@@ -25,6 +41,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@buildsip/agent-chat-parser": "workspace:*",
+    "@buildsip/cli-auth": "workspace:*",
+    "@buildsip/hooks": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^25.9.1",
     "esbuild": "^0.28.0",
