@@ -46,7 +46,7 @@ If you run the web app locally, add:
 BUILDSIP_URL=http://localhost:3000
 ```
 
-`BUILDSIP_INSTALL_MODE=link` links the local CLI package and installs the story skill from `packages/skills`.
+`BUILDSIP_INSTALL_MODE=link` links the local CLI package and installs the story skill from `skills`.
 
 2. Initialize the package.
 

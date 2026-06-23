@@ -13,7 +13,7 @@ description: Create a work story.
 
 4. Spawn a subagent to audit the story files with this instruction:
 
-> Audit whether the BuildSip story files respect the rules from `.agents/skills/buildsip/DRAFT.md`. Return findings as normal agent output. Do **not** rewrite the files. If nothing is wrong, say so clearly.
+> Audit whether the BuildSip story files respect the rules from the adjacent `DRAFT.md`. Return findings as normal agent output. Do **not** rewrite the files. If nothing is wrong, say so clearly.
 
 If the audit fails, skip to cleanup.
 

@@ -87,7 +87,9 @@ export function registerInitCommand(program: Command) {
         await installSkill({
           names,
           source:
-            installMode === "link" ? join(findPackageRoot(), "..", "skills") : "buildsip/skills",
+            installMode === "link"
+              ? join(findPackageRoot(), "..", "..", "skills")
+              : "buildsip/buildsip",
           verbose: options.verbose,
         });
 
