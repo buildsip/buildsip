@@ -1,16 +1,26 @@
-import * as fs from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import * as path from 'node:path';
-import type { AgentChatParserContext, ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
-import type { SessionSource } from '../types/tool-names';
-import { extractRepoFromCwd, homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
-import { matchesCwd } from '../utils/slug';
+import * as fs from "node:fs/promises";
+import { createRequire } from "node:module";
+import * as path from "node:path";
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  SessionParseOptions,
+  UnifiedSession,
+} from "../types/index";
+import type { SessionSource } from "../types/tool-names";
+import {
+  extractRepoFromCwd,
+  homeDir,
+  type MessageDraft,
+  sequenceMessages,
+} from "../utils/parser-helpers";
+import { matchesCwd } from "../utils/slug";
 
 const require = createRequire(import.meta.url);
 
-const CRUSH_SOURCE: SessionSource = 'crush';
-const CRUSH_DB_FILE = 'crush.db';
-const CRUSH_DATA_DIR = '.crush';
+const CRUSH_SOURCE: SessionSource = "crush";
+const CRUSH_DB_FILE = "crush.db";
+const CRUSH_DATA_DIR = ".crush";
 
 interface SqlitePreparedStatement {
   all(...params: unknown[]): unknown[];
@@ -64,16 +74,18 @@ interface ParsedCrushParts {
 
 interface ParsedCrushMessage {
   row: CrushMessageRow;
-  role: MessageDraft['role'] | 'tool';
+  role: MessageDraft["role"] | "tool";
   parts: ParsedCrushParts;
 }
 
-function getDatabaseSyncConstructor(ctx: AgentChatParserContext): DatabaseSyncConstructor | undefined {
+function getDatabaseSyncConstructor(
+  ctx: AgentChatParserContext,
+): DatabaseSyncConstructor | undefined {
   try {
-    const sqlite = require('node:sqlite') as { DatabaseSync: DatabaseSyncConstructor };
+    const sqlite = require("node:sqlite") as { DatabaseSync: DatabaseSyncConstructor };
     return sqlite.DatabaseSync;
   } catch (err) {
-    ctx.log.debug('crush: node:sqlite is unavailable', err);
+    ctx.log.debug("crush: node:sqlite is unavailable", err);
     return undefined;
   }
 }
@@ -84,14 +96,17 @@ async function pathExists(ctx: AgentChatParserContext, filePath: string): Promis
     return true;
   } catch (err) {
     const code = nodeErrorCode(err);
-    if (code !== 'ENOENT' && code !== 'ENOTDIR') {
-      ctx.log.debug('crush: path is not readable', filePath, err);
+    if (code !== "ENOENT" && code !== "ENOTDIR") {
+      ctx.log.debug("crush: path is not readable", filePath, err);
     }
     return false;
   }
 }
 
-async function openReadOnlyDatabase(ctx: AgentChatParserContext, dbPath: string): Promise<SqliteDatabase | undefined> {
+async function openReadOnlyDatabase(
+  ctx: AgentChatParserContext,
+  dbPath: string,
+): Promise<SqliteDatabase | undefined> {
   if (!(await pathExists(ctx, dbPath))) return undefined;
 
   const DatabaseSync = getDatabaseSyncConstructor(ctx);
@@ -100,7 +115,7 @@ async function openReadOnlyDatabase(ctx: AgentChatParserContext, dbPath: string)
   try {
     return new DatabaseSync(dbPath, { readOnly: true });
   } catch (err) {
-    ctx.log.debug('crush: failed to open SQLite database read-only', dbPath, err);
+    ctx.log.debug("crush: failed to open SQLite database read-only", dbPath, err);
     return undefined;
   }
 }
@@ -109,13 +124,13 @@ function closeDatabase(ctx: AgentChatParserContext, db: SqliteDatabase, dbPath: 
   try {
     db.close();
   } catch (err) {
-    ctx.log.debug('crush: failed to close SQLite database', dbPath, err);
+    ctx.log.debug("crush: failed to close SQLite database", dbPath, err);
   }
 }
 
 function expandHome(value: string): string {
-  if (value === '~') return homeDir();
-  if (value.startsWith('~/')) return path.join(homeDir(), value.slice(2));
+  if (value === "~") return homeDir();
+  if (value.startsWith("~/")) return path.join(homeDir(), value.slice(2));
   return value;
 }
 
@@ -124,7 +139,7 @@ function inferCwdFromDbPath(dbPath: string): string {
   if (path.basename(dataDir) === CRUSH_DATA_DIR) {
     return path.dirname(dataDir);
   }
-  return '';
+  return "";
 }
 
 function addCandidate(
@@ -164,14 +179,14 @@ async function addCwdCandidates(
 
 function crushGlobalDataPath(): string {
   if (process.env.CRUSH_GLOBAL_DATA) {
-    return path.join(expandHome(process.env.CRUSH_GLOBAL_DATA), 'crush.json');
+    return path.join(expandHome(process.env.CRUSH_GLOBAL_DATA), "crush.json");
   }
 
   if (process.env.XDG_DATA_HOME) {
-    return path.join(expandHome(process.env.XDG_DATA_HOME), 'crush', 'crush.json');
+    return path.join(expandHome(process.env.XDG_DATA_HOME), "crush", "crush.json");
   }
 
-  return path.join(homeDir(), '.local', 'share', 'crush', 'crush.json');
+  return path.join(homeDir(), ".local", "share", "crush", "crush.json");
 }
 
 async function addProjectIndexCandidates(
@@ -179,24 +194,24 @@ async function addProjectIndexCandidates(
   candidates: CrushDbCandidate[],
   seen: Set<string>,
 ): Promise<void> {
-  const projectsPath = path.join(path.dirname(crushGlobalDataPath()), 'projects.json');
+  const projectsPath = path.join(path.dirname(crushGlobalDataPath()), "projects.json");
 
   try {
-    const raw = await fs.readFile(projectsPath, 'utf8');
+    const raw = await fs.readFile(projectsPath, "utf8");
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed) || !Array.isArray(parsed.projects)) return;
 
     for (const project of parsed.projects) {
       if (!isRecord(project)) continue;
-      const projectPath = stringValue(project, 'path');
-      const dataDir = stringValue(project, 'data_dir');
+      const projectPath = stringValue(project, "path");
+      const dataDir = stringValue(project, "data_dir");
       if (!dataDir) continue;
       addCandidate(candidates, seen, path.join(dataDir, CRUSH_DB_FILE), projectPath);
     }
   } catch (err) {
     const code = nodeErrorCode(err);
-    if (code !== 'ENOENT' && code !== 'ENOTDIR') {
-      ctx.log.debug('crush: failed to inspect projects index', projectsPath, err);
+    if (code !== "ENOENT" && code !== "ENOTDIR") {
+      ctx.log.debug("crush: failed to inspect projects index", projectsPath, err);
     }
   }
 }
@@ -229,27 +244,27 @@ async function getCrushDbCandidates(
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function nodeErrorCode(err: unknown): string | undefined {
   if (!isRecord(err)) return undefined;
   const code = err.code;
-  return typeof code === 'string' ? code : undefined;
+  return typeof code === "string" ? code : undefined;
 }
 
 function stringValue(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
   return undefined;
 }
 
 function numberValue(record: Record<string, unknown>, key: string): number | undefined {
   const value = record[key];
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'bigint') return Number(value);
-  if (typeof value === 'string' && value.trim() !== '') {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "string" && value.trim() !== "") {
     const parsed = Number(value);
     if (Number.isFinite(parsed)) return parsed;
   }
@@ -258,12 +273,12 @@ function numberValue(record: Record<string, unknown>, key: string): number | und
 
 function booleanValue(record: Record<string, unknown>, key: string): boolean | undefined {
   const value = record[key];
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value !== 0;
-  if (typeof value === 'bigint') return value !== 0n;
-  if (typeof value === 'string') {
-    if (value === '1' || value.toLowerCase() === 'true') return true;
-    if (value === '0' || value.toLowerCase() === 'false') return false;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "bigint") return value !== 0n;
+  if (typeof value === "string") {
+    if (value === "1" || value.toLowerCase() === "true") return true;
+    if (value === "0" || value.toLowerCase() === "false") return false;
   }
   return undefined;
 }
@@ -298,13 +313,17 @@ function safeGet(
   }
 }
 
-function columnNames(ctx: AgentChatParserContext, db: SqliteDatabase, tableName: 'sessions' | 'messages'): Set<string> {
+function columnNames(
+  ctx: AgentChatParserContext,
+  db: SqliteDatabase,
+  tableName: "sessions" | "messages",
+): Set<string> {
   const rows = safeAll(ctx, db, `PRAGMA table_info(${tableName})`, [], `${tableName} columns`);
   const names = new Set<string>();
 
   for (const row of rows) {
     if (!isRecord(row)) continue;
-    const name = stringValue(row, 'name');
+    const name = stringValue(row, "name");
     if (name) names.add(name);
   }
 
@@ -312,17 +331,22 @@ function columnNames(ctx: AgentChatParserContext, db: SqliteDatabase, tableName:
 }
 
 function getSchema(ctx: AgentChatParserContext, db: SqliteDatabase): CrushSchema | undefined {
-  const sessionColumns = columnNames(ctx, db, 'sessions');
-  const messageColumns = columnNames(ctx, db, 'messages');
+  const sessionColumns = columnNames(ctx, db, "sessions");
+  const messageColumns = columnNames(ctx, db, "messages");
 
-  if (!sessionColumns.has('id') || !messageColumns.has('session_id')) {
+  if (!sessionColumns.has("id") || !messageColumns.has("session_id")) {
     return undefined;
   }
 
   return { sessionColumns, messageColumns };
 }
 
-function selectColumn(columns: ReadonlySet<string>, column: string, fallback: string, alias: string): string {
+function selectColumn(
+  columns: ReadonlySet<string>,
+  column: string,
+  fallback: string,
+  alias: string,
+): string {
   return columns.has(column) ? `${column} AS ${alias}` : `${fallback} AS ${alias}`;
 }
 
@@ -336,15 +360,18 @@ function selectQualifiedColumn(
   return columns.has(column) ? `${qualifier}.${column} AS ${alias}` : `${fallback} AS ${alias}`;
 }
 
-function messageOrderBy(schema: CrushSchema, direction: 'ASC' | 'DESC' = 'ASC'): string {
+function messageOrderBy(schema: CrushSchema, direction: "ASC" | "DESC" = "ASC"): string {
   const parts: string[] = [];
-  if (schema.messageColumns.has('created_at')) parts.push(`created_at ${direction}`);
-  parts.push(schema.messageColumns.has('id') ? `id ${direction}` : `rowid ${direction}`);
-  return parts.join(', ');
+  if (schema.messageColumns.has("created_at")) parts.push(`created_at ${direction}`);
+  parts.push(schema.messageColumns.has("id") ? `id ${direction}` : `rowid ${direction}`);
+  return parts.join(", ");
 }
 
-function sessionTimestampExpression(schema: CrushSchema, column: 'created_at' | 'updated_at'): string {
-  return schema.sessionColumns.has(column) ? `s.${column}` : 'NULL';
+function sessionTimestampExpression(
+  schema: CrushSchema,
+  column: "created_at" | "updated_at",
+): string {
+  return schema.sessionColumns.has(column) ? `s.${column}` : "NULL";
 }
 
 function matchesCrushCwd(candidateCwd: string, targetCwd: string): boolean {
@@ -363,35 +390,35 @@ function normalizeTimestamp(value: number | undefined): Date | undefined {
 
 function parseSessionRow(row: unknown): CrushSessionRow | undefined {
   if (!isRecord(row)) return undefined;
-  const id = stringValue(row, 'id');
+  const id = stringValue(row, "id");
   if (!id) return undefined;
 
   return {
     id,
-    title: stringValue(row, 'title') ?? '',
-    sessionCreatedAt: numberValue(row, 'sessionCreatedAt'),
-    sessionUpdatedAt: numberValue(row, 'sessionUpdatedAt'),
-    firstMessageAt: numberValue(row, 'firstMessageAt'),
-    lastMessageAt: numberValue(row, 'lastMessageAt'),
-    messageCount: numberValue(row, 'messageCount') ?? 0,
-    latestModel: stringValue(row, 'latestModel'),
+    title: stringValue(row, "title") ?? "",
+    sessionCreatedAt: numberValue(row, "sessionCreatedAt"),
+    sessionUpdatedAt: numberValue(row, "sessionUpdatedAt"),
+    firstMessageAt: numberValue(row, "firstMessageAt"),
+    lastMessageAt: numberValue(row, "lastMessageAt"),
+    messageCount: numberValue(row, "messageCount") ?? 0,
+    latestModel: stringValue(row, "latestModel"),
   };
 }
 
 function parseMessageRow(row: unknown): CrushMessageRow | undefined {
   if (!isRecord(row)) return undefined;
-  const id = stringValue(row, 'id');
-  const role = stringValue(row, 'role');
+  const id = stringValue(row, "id");
+  const role = stringValue(row, "role");
   if (!id || !role) return undefined;
 
   return {
     id,
     role,
-    parts: stringValue(row, 'parts') ?? '[]',
-    createdAt: numberValue(row, 'createdAt'),
-    model: stringValue(row, 'model'),
-    provider: stringValue(row, 'provider'),
-    isSummaryMessage: booleanValue(row, 'isSummaryMessage') ?? false,
+    parts: stringValue(row, "parts") ?? "[]",
+    createdAt: numberValue(row, "createdAt"),
+    model: stringValue(row, "model"),
+    provider: stringValue(row, "provider"),
+    isSummaryMessage: booleanValue(row, "isSummaryMessage") ?? false,
   };
 }
 
@@ -400,24 +427,24 @@ function parseParts(ctx: AgentChatParserContext, partsJson: string): ParsedCrush
   try {
     parsed = JSON.parse(partsJson);
   } catch (err) {
-    ctx.log.debug('crush: failed to parse message parts JSON', err);
-    return { text: '', malformed: true };
+    ctx.log.debug("crush: failed to parse message parts JSON", err);
+    return { text: "", malformed: true };
   }
 
   if (!Array.isArray(parsed)) {
-    return { text: '', malformed: true };
+    return { text: "", malformed: true };
   }
 
   const text: string[] = [];
 
   for (const part of parsed) {
     if (!isRecord(part)) continue;
-    const type = stringValue(part, 'type');
+    const type = stringValue(part, "type");
     const data = isRecord(part.data) ? part.data : {};
 
     switch (type) {
-      case 'text': {
-        const value = stringValue(data, 'text') ?? stringValue(part, 'text');
+      case "text": {
+        const value = stringValue(data, "text") ?? stringValue(part, "text");
         if (value) text.push(value);
         break;
       }
@@ -427,18 +454,18 @@ function parseParts(ctx: AgentChatParserContext, partsJson: string): ParsedCrush
   }
 
   return {
-    text: text.join('\n').trim(),
+    text: text.join("\n").trim(),
     malformed: false,
   };
 }
 
-function normalizeRole(role: string): MessageDraft['role'] | 'tool' | undefined {
+function normalizeRole(role: string): MessageDraft["role"] | "tool" | undefined {
   switch (role) {
-    case 'user':
-    case 'assistant':
+    case "user":
+    case "assistant":
       return role;
-    case 'tool':
-      return 'tool';
+    case "tool":
+      return "tool";
     default:
       return undefined;
   }
@@ -450,20 +477,20 @@ function normalizeRole(role: string): MessageDraft['role'] | 'tool' | undefined 
  * for the outer `s.id` session. Folding this into the main listing query
  * avoids per-session N+1 queries during `parseCrushSessions`.
  */
-function buildLatestAssistantSubquery(schema: CrushSchema, column: 'model' | 'provider'): string {
-  if (!schema.messageColumns.has('role') || !schema.messageColumns.has('model')) {
-    return 'NULL';
+function buildLatestAssistantSubquery(schema: CrushSchema, column: "model" | "provider"): string {
+  if (!schema.messageColumns.has("role") || !schema.messageColumns.has("model")) {
+    return "NULL";
   }
-  if (column === 'provider' && !schema.messageColumns.has('provider')) {
-    return 'NULL';
+  if (column === "provider" && !schema.messageColumns.has("provider")) {
+    return "NULL";
   }
 
-  const summaryFilter = schema.messageColumns.has('is_summary_message')
-    ? 'AND COALESCE(lm.is_summary_message, 0) = 0'
-    : '';
+  const summaryFilter = schema.messageColumns.has("is_summary_message")
+    ? "AND COALESCE(lm.is_summary_message, 0) = 0"
+    : "";
   const orderParts: string[] = [];
-  if (schema.messageColumns.has('created_at')) orderParts.push('lm.created_at DESC');
-  orderParts.push(schema.messageColumns.has('id') ? 'lm.id DESC' : 'lm.rowid DESC');
+  if (schema.messageColumns.has("created_at")) orderParts.push("lm.created_at DESC");
+  orderParts.push(schema.messageColumns.has("id") ? "lm.id DESC" : "lm.rowid DESC");
 
   return `(
     SELECT lm.${column}
@@ -473,7 +500,7 @@ function buildLatestAssistantSubquery(schema: CrushSchema, column: 'model' | 'pr
       AND lm.model IS NOT NULL
       AND lm.model != ''
       ${summaryFilter}
-    ORDER BY ${orderParts.join(', ')}
+    ORDER BY ${orderParts.join(", ")}
     LIMIT 1
   )`;
 }
@@ -487,26 +514,28 @@ function listSessionsFromDb(
   const schema = getSchema(ctx, db);
   if (!schema) return [];
 
-  const messageSummaryJoin = schema.messageColumns.has('is_summary_message')
-    ? 'AND COALESCE(m.is_summary_message, 0) = 0'
-    : '';
-  const parentFilter = schema.sessionColumns.has('parent_session_id') ? 'WHERE s.parent_session_id IS NULL' : '';
-  const firstMessageAt = schema.messageColumns.has('created_at') ? 'MIN(m.created_at)' : 'NULL';
-  const lastMessageAt = schema.messageColumns.has('created_at') ? 'MAX(m.created_at)' : 'NULL';
-  const messageCount = schema.messageColumns.has('id') ? 'COUNT(m.id)' : 'COUNT(m.session_id)';
-  const sessionUpdatedAt = sessionTimestampExpression(schema, 'updated_at');
-  const sessionCreatedAt = sessionTimestampExpression(schema, 'created_at');
-  const orderMessageAt = schema.messageColumns.has('created_at') ? 'MAX(m.created_at)' : 'NULL';
+  const messageSummaryJoin = schema.messageColumns.has("is_summary_message")
+    ? "AND COALESCE(m.is_summary_message, 0) = 0"
+    : "";
+  const parentFilter = schema.sessionColumns.has("parent_session_id")
+    ? "WHERE s.parent_session_id IS NULL"
+    : "";
+  const firstMessageAt = schema.messageColumns.has("created_at") ? "MIN(m.created_at)" : "NULL";
+  const lastMessageAt = schema.messageColumns.has("created_at") ? "MAX(m.created_at)" : "NULL";
+  const messageCount = schema.messageColumns.has("id") ? "COUNT(m.id)" : "COUNT(m.session_id)";
+  const sessionUpdatedAt = sessionTimestampExpression(schema, "updated_at");
+  const sessionCreatedAt = sessionTimestampExpression(schema, "created_at");
+  const orderMessageAt = schema.messageColumns.has("created_at") ? "MAX(m.created_at)" : "NULL";
   const orderBy = `COALESCE(${orderMessageAt}, ${sessionUpdatedAt}, ${sessionCreatedAt}, 0)`;
-  const latestModelExpression = buildLatestAssistantSubquery(schema, 'model');
+  const latestModelExpression = buildLatestAssistantSubquery(schema, "model");
   const rows = safeAll(
     ctx,
     db,
     `SELECT
        s.id AS id,
-       ${selectQualifiedColumn(schema.sessionColumns, 's', 'title', "''", 'title')},
-       ${selectQualifiedColumn(schema.sessionColumns, 's', 'created_at', 'NULL', 'sessionCreatedAt')},
-       ${selectQualifiedColumn(schema.sessionColumns, 's', 'updated_at', 'NULL', 'sessionUpdatedAt')},
+       ${selectQualifiedColumn(schema.sessionColumns, "s", "title", "''", "title")},
+       ${selectQualifiedColumn(schema.sessionColumns, "s", "created_at", "NULL", "sessionCreatedAt")},
+       ${selectQualifiedColumn(schema.sessionColumns, "s", "updated_at", "NULL", "sessionUpdatedAt")},
        ${firstMessageAt} AS firstMessageAt,
        ${lastMessageAt} AS lastMessageAt,
        ${messageCount} AS messageCount,
@@ -517,7 +546,7 @@ function listSessionsFromDb(
      GROUP BY s.id
      ORDER BY ${orderBy} DESC`,
     [],
-    'Crush sessions',
+    "Crush sessions",
   );
 
   const sessions: UnifiedSession[] = [];
@@ -556,7 +585,8 @@ function listSessionsFromDb(
 }
 
 function sessionDbCandidate(session: UnifiedSession): CrushDbCandidate | undefined {
-  if (!session.originalPath || path.basename(session.originalPath) !== CRUSH_DB_FILE) return undefined;
+  if (!session.originalPath || path.basename(session.originalPath) !== CRUSH_DB_FILE)
+    return undefined;
   return {
     dbPath: session.originalPath,
     cwd: session.cwd || inferCwdFromDbPath(session.originalPath),
@@ -570,7 +600,10 @@ async function findDbForSession(
   const direct = sessionDbCandidate(session);
   if (direct && (await pathExists(ctx, direct.dbPath))) return direct;
 
-  const candidates = await getCrushDbCandidates(ctx, session.cwd ? { cwd: session.cwd } : undefined);
+  const candidates = await getCrushDbCandidates(
+    ctx,
+    session.cwd ? { cwd: session.cwd } : undefined,
+  );
   for (const candidate of candidates) {
     if (!(await pathExists(ctx, candidate.dbPath))) continue;
     const db = await openReadOnlyDatabase(ctx, candidate.dbPath);
@@ -578,8 +611,14 @@ async function findDbForSession(
     try {
       const schema = getSchema(ctx, db);
       if (!schema) continue;
-      const row = safeGet(ctx, db, 'SELECT id FROM sessions WHERE id = ? LIMIT 1', [session.id], 'Crush session lookup');
-      if (isRecord(row) && stringValue(row, 'id') === session.id) return candidate;
+      const row = safeGet(
+        ctx,
+        db,
+        "SELECT id FROM sessions WHERE id = ? LIMIT 1",
+        [session.id],
+        "Crush session lookup",
+      );
+      if (isRecord(row) && stringValue(row, "id") === session.id) return candidate;
     } finally {
       closeDatabase(ctx, db, candidate.dbPath);
     }
@@ -594,13 +633,18 @@ function listMessageRows(
   schema: CrushSchema,
   sessionId: string,
 ): CrushMessageRow[] {
-  const idSelect = selectColumn(schema.messageColumns, 'id', 'CAST(rowid AS TEXT)', 'id');
-  const roleSelect = selectColumn(schema.messageColumns, 'role', "''", 'role');
-  const partsSelect = selectColumn(schema.messageColumns, 'parts', "'[]'", 'parts');
-  const modelSelect = selectColumn(schema.messageColumns, 'model', 'NULL', 'model');
-  const createdAtSelect = selectColumn(schema.messageColumns, 'created_at', 'NULL', 'createdAt');
-  const providerSelect = selectColumn(schema.messageColumns, 'provider', 'NULL', 'provider');
-  const summarySelect = selectColumn(schema.messageColumns, 'is_summary_message', '0', 'isSummaryMessage');
+  const idSelect = selectColumn(schema.messageColumns, "id", "CAST(rowid AS TEXT)", "id");
+  const roleSelect = selectColumn(schema.messageColumns, "role", "''", "role");
+  const partsSelect = selectColumn(schema.messageColumns, "parts", "'[]'", "parts");
+  const modelSelect = selectColumn(schema.messageColumns, "model", "NULL", "model");
+  const createdAtSelect = selectColumn(schema.messageColumns, "created_at", "NULL", "createdAt");
+  const providerSelect = selectColumn(schema.messageColumns, "provider", "NULL", "provider");
+  const summarySelect = selectColumn(
+    schema.messageColumns,
+    "is_summary_message",
+    "0",
+    "isSummaryMessage",
+  );
   const rows = safeAll(
     ctx,
     db,
@@ -616,13 +660,16 @@ function listMessageRows(
      WHERE session_id = ?
      ORDER BY ${messageOrderBy(schema)}`,
     [sessionId],
-    'Crush messages',
+    "Crush messages",
   );
 
   return rows.map(parseMessageRow).filter((row): row is CrushMessageRow => Boolean(row));
 }
 
-function buildParsedMessages(ctx: AgentChatParserContext, rows: CrushMessageRow[]): ParsedCrushMessage[] {
+function buildParsedMessages(
+  ctx: AgentChatParserContext,
+  rows: CrushMessageRow[],
+): ParsedCrushMessage[] {
   const messages: ParsedCrushMessage[] = [];
 
   for (const row of rows) {
@@ -652,7 +699,7 @@ function buildConversation(parsedMessages: ParsedCrushMessage[]): {
     const { row, role, parts } = parsed;
     if (!model && row.model) model = row.model;
 
-    if (role === 'tool') continue;
+    if (role === "tool") continue;
 
     const content = parts.text.trim();
     if (!content) continue;
@@ -660,7 +707,9 @@ function buildConversation(parsedMessages: ParsedCrushMessage[]): {
     messages.push({
       role,
       content,
-      ...(normalizeTimestamp(row.createdAt) ? { timestamp: normalizeTimestamp(row.createdAt) } : {}),
+      ...(normalizeTimestamp(row.createdAt)
+        ? { timestamp: normalizeTimestamp(row.createdAt) }
+        : {}),
       sourceId: row.id,
     });
   }

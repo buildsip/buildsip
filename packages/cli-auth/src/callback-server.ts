@@ -13,10 +13,7 @@ type CallbackResult =
       ok: false;
     };
 
-export async function startCallbackServer(
-  ctx: AuthContext,
-  expectedState: string,
-) {
+export async function startCallbackServer(ctx: AuthContext, expectedState: string) {
   const callbackUrl = new URL(config.redirectUri);
   let complete = false;
   let failCallback: (error: Error) => void = () => undefined;
@@ -50,10 +47,7 @@ export async function startCallbackServer(
 
     const callbackResult = readCallbackResult(requestUrl, expectedState);
     if (!callbackResult.ok) {
-      redirectResponse(
-        response,
-        loginCompleteErrorUrl(callbackResult.message),
-      );
+      redirectResponse(response, loginCompleteErrorUrl(callbackResult.message));
       failCallback(new Error(callbackResult.errorMessage));
 
       return;
@@ -63,9 +57,7 @@ export async function startCallbackServer(
     finishCallback(callbackResult.code);
   });
 
-  ctx.log.debug(
-    `Starting login callback server on ${callbackUrl.hostname}:${callbackUrl.port}.`,
-  );
+  ctx.log.debug(`Starting login callback server on ${callbackUrl.hostname}:${callbackUrl.port}.`);
   await listen(server, Number(callbackUrl.port), callbackUrl.hostname);
   ctx.log.debug("Login callback server started.");
 
@@ -92,10 +84,7 @@ export async function startCallbackServer(
   };
 }
 
-function readCallbackResult(
-  requestUrl: URL,
-  expectedState: string,
-): CallbackResult {
+function readCallbackResult(requestUrl: URL, expectedState: string): CallbackResult {
   if (requestUrl.searchParams.get("state") !== expectedState) {
     return {
       errorMessage: "Login callback state did not match.",
@@ -106,8 +95,7 @@ function readCallbackResult(
 
   if (requestUrl.searchParams.has("error")) {
     const errorMessage =
-      requestUrl.searchParams.get("error_description") ??
-      "Authorization was denied.";
+      requestUrl.searchParams.get("error_description") ?? "Authorization was denied.";
 
     return {
       errorMessage,
@@ -160,12 +148,7 @@ function close(server: Server) {
   });
 }
 
-function endResponse(
-  response: ServerResponse,
-  status: number,
-  body: string,
-  contentType: string,
-) {
+function endResponse(response: ServerResponse, status: number, body: string, contentType: string) {
   response.writeHead(status, {
     Connection: "close",
     "Content-Type": contentType,

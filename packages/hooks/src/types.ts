@@ -9,10 +9,7 @@ export type Message = {
   role: Role;
 };
 
-export type Input<
-  TName extends string = string,
-  TEventName extends string = string,
-> = {
+export type Input<TName extends string = string, TEventName extends string = string> = {
   cwd: string[];
   eventName: TEventName;
   message: Message;

@@ -1,19 +1,23 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
-import type { CopilotEvent } from '../types/schemas';
-import { CopilotWorkspaceSchema } from '../types/schemas';
-import { listSubdirectories } from '../utils/fs-helpers';
-import { readJsonlFile, scanJsonlFile } from '../utils/jsonl';
-import { homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  UnifiedSession,
+} from "../types/index";
+import type { CopilotEvent } from "../types/schemas";
+import { CopilotWorkspaceSchema } from "../types/schemas";
+import { listSubdirectories } from "../utils/fs-helpers";
+import { readJsonlFile, scanJsonlFile } from "../utils/jsonl";
+import { homeDir, type MessageDraft, sequenceMessages } from "../utils/parser-helpers";
 
 function getCopilotRoot(): string {
   const configuredHome = process.env.COPILOT_HOME?.trim();
-  return configuredHome || path.join(homeDir(), '.copilot');
+  return configuredHome || path.join(homeDir(), ".copilot");
 }
 
 function getCopilotSessionsDir(): string {
-  return path.join(getCopilotRoot(), 'session-state');
+  return path.join(getCopilotRoot(), "session-state");
 }
 
 /**
@@ -22,18 +26,20 @@ function getCopilotSessionsDir(): string {
 async function findSessionDirs(ctx: AgentChatParserContext): Promise<string[]> {
   const sessionsDir = getCopilotSessionsDir();
   if (!fs.existsSync(sessionsDir)) return [];
-  return listSubdirectories(ctx, sessionsDir).filter((dir) => fs.existsSync(path.join(dir, 'workspace.yaml')));
+  return listSubdirectories(ctx, sessionsDir).filter((dir) =>
+    fs.existsSync(path.join(dir, "workspace.yaml")),
+  );
 }
 
 // Copilot workspace.yaml is a flat key:value file. Summary can be a multiline block, which we skip.
 function parseWorkspaceYaml(content: string): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  const lines = content.split('\n');
+  const lines = content.split("\n");
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
+    if (!trimmed || trimmed.startsWith("#")) continue;
 
     const match = /^([a-z_][\w]*):\s*(.*)$/i.exec(trimmed);
     if (!match) continue;
@@ -41,15 +47,18 @@ function parseWorkspaceYaml(content: string): Record<string, unknown> {
     const key = match[1];
     if (!key) continue;
 
-    const rawValue = match[2] ?? '';
-    if (rawValue === '|' || rawValue === '>') {
+    const rawValue = match[2] ?? "";
+    if (rawValue === "|" || rawValue === ">") {
       while (i + 1 < lines.length && /^[ \t]/.test(lines[i + 1]!)) {
         i++;
       }
       continue;
     }
 
-    if ((rawValue.startsWith('"') && rawValue.endsWith('"')) || (rawValue.startsWith("'") && rawValue.endsWith("'"))) {
+    if (
+      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+      (rawValue.startsWith("'") && rawValue.endsWith("'"))
+    ) {
       result[key] = rawValue.slice(1, -1);
       continue;
     }
@@ -67,15 +76,15 @@ function parseWorkspaceYaml(content: string): Record<string, unknown> {
 
 function parseWorkspace(ctx: AgentChatParserContext, workspacePath: string) {
   try {
-    const content = fs.readFileSync(workspacePath, 'utf8');
+    const content = fs.readFileSync(workspacePath, "utf8");
     const parsed = CopilotWorkspaceSchema.safeParse(parseWorkspaceYaml(content));
     if (!parsed.success) {
-      ctx.log.debug('copilot: invalid workspace YAML', workspacePath, parsed.error);
+      ctx.log.debug("copilot: invalid workspace YAML", workspacePath, parsed.error);
       return null;
     }
     return parsed.data;
   } catch (err) {
-    ctx.log.debug('copilot: failed to parse workspace YAML', workspacePath, err);
+    ctx.log.debug("copilot: failed to parse workspace YAML", workspacePath, err);
     return null;
   }
 }
@@ -89,22 +98,26 @@ function parseWorkspace(ctx: AgentChatParserContext, workspacePath: string) {
  * to 1 MiB and prefer selectedModel (early return on first match), falling back to the
  * latest currentModel observed during the bounded scan.
  */
-async function extractModel(ctx: AgentChatParserContext, eventsPath: string): Promise<string | undefined> {
+async function extractModel(
+  ctx: AgentChatParserContext,
+  eventsPath: string,
+): Promise<string | undefined> {
   let selected: string | undefined;
   let latestCurrent: string | undefined;
 
-  await scanJsonlFile(ctx,
+  await scanJsonlFile(
+    ctx,
     eventsPath,
     (parsed) => {
       const event = parsed as CopilotEvent;
       if (event.data?.selectedModel) {
         selected = event.data.selectedModel;
-        return 'stop';
+        return "stop";
       }
       if (event.data?.currentModel) {
         latestCurrent = event.data.currentModel;
       }
-      return 'continue';
+      return "continue";
     },
     { maxBytes: 1024 * 1024 },
   );
@@ -121,8 +134,8 @@ export async function parseCopilotSessions(ctx: AgentChatParserContext): Promise
 
   for (const sessionDir of dirs) {
     try {
-      const workspacePath = path.join(sessionDir, 'workspace.yaml');
-      const eventsPath = path.join(sessionDir, 'events.jsonl');
+      const workspacePath = path.join(sessionDir, "workspace.yaml");
+      const eventsPath = path.join(sessionDir, "events.jsonl");
 
       const workspace = parseWorkspace(ctx, workspacePath);
       if (!workspace) continue;
@@ -135,7 +148,7 @@ export async function parseCopilotSessions(ctx: AgentChatParserContext): Promise
 
       sessions.push({
         id: workspace.id,
-        source: 'copilot',
+        source: "copilot",
         cwd: workspace.cwd,
         repo: workspace.repository,
         branch: workspace.branch,
@@ -145,7 +158,7 @@ export async function parseCopilotSessions(ctx: AgentChatParserContext): Promise
         model,
       });
     } catch (err) {
-      ctx.log.debug('copilot: skipping unparseable session', sessionDir, err);
+      ctx.log.debug("copilot: skipping unparseable session", sessionDir, err);
       // Skip sessions we can't parse
     }
   }
@@ -160,30 +173,30 @@ export async function extractCopilotContext(
   ctx: AgentChatParserContext,
   session: UnifiedSession,
 ): Promise<ParsedAgentConversation> {
-  const eventsPath = path.join(session.originalPath, 'events.jsonl');
+  const eventsPath = path.join(session.originalPath, "events.jsonl");
   const events = await readJsonlFile<CopilotEvent>(ctx, eventsPath);
 
   const messages: MessageDraft[] = [];
 
   for (const event of events) {
-    if (event.type === 'user.message') {
-      const content = event.data?.content || event.data?.transformedContent || '';
+    if (event.type === "user.message") {
+      const content = event.data?.content || event.data?.transformedContent || "";
       if (content) {
         messages.push({
-          role: 'user',
+          role: "user",
           content,
           timestamp: new Date(event.timestamp),
           sourceId: event.id,
           sourceParentId: event.parentId ?? undefined,
         });
       }
-    } else if (event.type === 'assistant.message') {
-      const content = event.data?.content || '';
+    } else if (event.type === "assistant.message") {
+      const content = event.data?.content || "";
 
       if (content) {
         messages.push({
-          role: 'assistant',
-          content: typeof content === 'string' ? content : JSON.stringify(content),
+          role: "assistant",
+          content: typeof content === "string" ? content : JSON.stringify(content),
           timestamp: new Date(event.timestamp),
           sourceId: event.id,
           sourceParentId: event.parentId ?? undefined,
@@ -218,7 +231,7 @@ async function extractLastEventTimestamp(
     try {
       sizeBytes = fs.statSync(eventsPath).size;
     } catch (err) {
-      ctx.log.debug('copilot: failed to stat events.jsonl for timestamp scan', eventsPath, err);
+      ctx.log.debug("copilot: failed to stat events.jsonl for timestamp scan", eventsPath, err);
       return undefined;
     }
   }
@@ -227,7 +240,8 @@ async function extractLastEventTimestamp(
   }
 
   let lastTimestamp: Date | undefined;
-  await scanJsonlFile(ctx,
+  await scanJsonlFile(
+    ctx,
     eventsPath,
     (parsed) => {
       const event = parsed as CopilotEvent;
@@ -235,7 +249,7 @@ async function extractLastEventTimestamp(
       if (timestamp && !Number.isNaN(timestamp.getTime())) {
         lastTimestamp = timestamp;
       }
-      return 'continue';
+      return "continue";
     },
     { maxBytes: MAX_TIMESTAMP_SCAN_BYTES },
   );

@@ -2,9 +2,9 @@
  * Shared JSONL reading utilities.
  * Replaces 5+ identical readAllMessages() functions across parsers.
  */
-import * as fs from 'node:fs';
-import { StringDecoder } from 'node:string_decoder';
-import type { AgentChatParserContext } from '../types/index';
+import * as fs from "node:fs";
+import { StringDecoder } from "node:string_decoder";
+import type { AgentChatParserContext } from "../types/index";
 
 const DEFAULT_MAX_LINE_CHARS = 16 * 1024 * 1024;
 
@@ -27,48 +27,48 @@ export interface JsonlReadOptions {
 export async function scanJsonlLines(
   ctx: AgentChatParserContext,
   filePath: string,
-  visitor: (line: string, lineIndex: number) => 'continue' | 'stop',
+  visitor: (line: string, lineIndex: number) => "continue" | "stop",
   options: JsonlReadOptions = {},
 ): Promise<void> {
   if (!fs.existsSync(filePath)) return;
 
   const maxLineChars = options.maxLineChars ?? DEFAULT_MAX_LINE_CHARS;
-  const decoder = new StringDecoder('utf8');
+  const decoder = new StringDecoder("utf8");
   const stream = fs.createReadStream(filePath);
-  let lineBuffer = '';
+  let lineBuffer = "";
   let lineIndex = 0;
   let skippingOversizedLine = false;
   let stopped = false;
   let bytesRead = 0;
 
-  const finishLine = (): 'continue' | 'stop' => {
+  const finishLine = (): "continue" | "stop" => {
     if (skippingOversizedLine) {
-      ctx.log.debug('jsonl: skipping oversized line at index', lineIndex, 'in', filePath);
+      ctx.log.debug("jsonl: skipping oversized line at index", lineIndex, "in", filePath);
       skippingOversizedLine = false;
-      lineBuffer = '';
+      lineBuffer = "";
       lineIndex++;
-      return 'continue';
+      return "continue";
     }
 
-    const line = lineBuffer.endsWith('\r') ? lineBuffer.slice(0, -1) : lineBuffer;
-    lineBuffer = '';
+    const line = lineBuffer.endsWith("\r") ? lineBuffer.slice(0, -1) : lineBuffer;
+    lineBuffer = "";
     const action = visitor(line, lineIndex);
     lineIndex++;
     return action;
   };
 
-  const consumeText = (text: string): 'continue' | 'stop' => {
+  const consumeText = (text: string): "continue" | "stop" => {
     let start = 0;
 
     while (start < text.length) {
-      const newlineIndex = text.indexOf('\n', start);
+      const newlineIndex = text.indexOf("\n", start);
       const segmentEnd = newlineIndex === -1 ? text.length : newlineIndex;
       const segment = text.slice(start, segmentEnd);
 
       if (!skippingOversizedLine) {
         if (lineBuffer.length + segment.length > maxLineChars) {
           skippingOversizedLine = true;
-          lineBuffer = '';
+          lineBuffer = "";
         } else {
           lineBuffer += segment;
         }
@@ -78,13 +78,13 @@ export async function scanJsonlLines(
         break;
       }
 
-      if (finishLine() === 'stop') {
-        return 'stop';
+      if (finishLine() === "stop") {
+        return "stop";
       }
       start = newlineIndex + 1;
     }
 
-    return 'continue';
+    return "continue";
   };
 
   try {
@@ -96,7 +96,7 @@ export async function scanJsonlLines(
       }
       bytesRead += buffer.length;
 
-      if (buffer.length > 0 && consumeText(decoder.write(buffer)) === 'stop') {
+      if (buffer.length > 0 && consumeText(decoder.write(buffer)) === "stop") {
         stopped = true;
       }
 
@@ -108,7 +108,7 @@ export async function scanJsonlLines(
 
     if (!stopped) {
       const remaining = decoder.end();
-      if (remaining && consumeText(remaining) === 'stop') {
+      if (remaining && consumeText(remaining) === "stop") {
         stopped = true;
       }
 
@@ -117,7 +117,7 @@ export async function scanJsonlLines(
       }
     }
   } catch (err) {
-    ctx.log.debug('jsonl: failed to stream', filePath, err);
+    ctx.log.debug("jsonl: failed to stream", filePath, err);
   }
 }
 
@@ -141,9 +141,9 @@ export async function readJsonlFile<T = unknown>(
       try {
         items.push(JSON.parse(line));
       } catch (err) {
-        ctx.log.debug('jsonl: skipping invalid line in', filePath, err);
+        ctx.log.debug("jsonl: skipping invalid line in", filePath, err);
       }
-      return 'continue';
+      return "continue";
     },
     options,
   );
@@ -159,7 +159,7 @@ export async function scanJsonlHead(
   ctx: AgentChatParserContext,
   filePath: string,
   maxLines: number,
-  visitor: (parsed: unknown, lineIndex: number) => 'continue' | 'stop',
+  visitor: (parsed: unknown, lineIndex: number) => "continue" | "stop",
   options?: JsonlReadOptions,
 ): Promise<void> {
   if (!fs.existsSync(filePath)) return;
@@ -168,14 +168,14 @@ export async function scanJsonlHead(
     ctx,
     filePath,
     (line, lineIndex) => {
-      if (lineIndex >= maxLines) return 'stop';
+      if (lineIndex >= maxLines) return "stop";
       try {
         const parsed = JSON.parse(line);
         return visitor(parsed, lineIndex);
       } catch {
-        ctx.log.debug('jsonl: skipping invalid line at index', lineIndex, 'in', filePath);
+        ctx.log.debug("jsonl: skipping invalid line at index", lineIndex, "in", filePath);
       }
-      return 'continue';
+      return "continue";
     },
     options,
   );
@@ -188,7 +188,7 @@ export async function scanJsonlHead(
 export async function scanJsonlFile(
   ctx: AgentChatParserContext,
   filePath: string,
-  visitor: (parsed: unknown, lineIndex: number) => 'continue' | 'stop',
+  visitor: (parsed: unknown, lineIndex: number) => "continue" | "stop",
   options?: JsonlReadOptions,
 ): Promise<void> {
   if (!fs.existsSync(filePath)) return;
@@ -201,9 +201,9 @@ export async function scanJsonlFile(
         const parsed = JSON.parse(line);
         return visitor(parsed, lineIndex);
       } catch {
-        ctx.log.debug('jsonl: skipping invalid line at index', lineIndex, 'in', filePath);
+        ctx.log.debug("jsonl: skipping invalid line at index", lineIndex, "in", filePath);
       }
-      return 'continue';
+      return "continue";
     },
     options,
   );
@@ -242,7 +242,7 @@ export async function getFileStats(
     if (lastByte !== 10) lines++;
     return { lines, bytes: stats.size };
   } catch (err) {
-    ctx.log.debug('jsonl: failed to count lines in', filePath, err);
+    ctx.log.debug("jsonl: failed to count lines in", filePath, err);
     return { lines: 0, bytes: stats.size };
   }
 }

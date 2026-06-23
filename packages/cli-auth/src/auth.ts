@@ -10,10 +10,7 @@ export type AuthResult = {
   session?: Session;
 };
 
-async function refreshSession(
-  ctx: AuthContext,
-  session: Session,
-): Promise<AuthResult> {
+async function refreshSession(ctx: AuthContext, session: Session): Promise<AuthResult> {
   try {
     const { tokenEndpoint } = await fetchOpenIdConfiguration(ctx);
     const token = await fetchToken(ctx, tokenEndpoint, {
@@ -36,10 +33,7 @@ async function refreshSession(
      * OpenID Connect token errors use OAuth's registered error names:
      * @see https://www.iana.org/assignments/oauth-parameters/oauth-parameters.xhtml#extensions-error
      */
-    if (
-      error instanceof OAuthTokenError &&
-      error.errorCode === "invalid_grant"
-    ) {
+    if (error instanceof OAuthTokenError && error.errorCode === "invalid_grant") {
       deleteSession();
       return {
         error: new Error(

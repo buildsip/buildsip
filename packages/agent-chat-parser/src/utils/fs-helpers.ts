@@ -1,9 +1,9 @@
 /**
  * Shared filesystem helpers used by multiple parsers.
  */
-import * as fs from 'fs';
-import * as path from 'path';
-import type { AgentChatParserContext } from '../types/index';
+import * as fs from "fs";
+import * as path from "path";
+import type { AgentChatParserContext } from "../types/index";
 
 export interface FindFilesOptions {
   /** Filter predicate — return true to include a file */
@@ -56,7 +56,7 @@ export function findFiles(
         }
       }
     } catch (err) {
-      ctx.log.debug('findFiles: cannot read directory', dir, err);
+      ctx.log.debug("findFiles: cannot read directory", dir, err);
     }
   };
 
@@ -87,7 +87,7 @@ export function listSubdirectories(ctx: AgentChatParserContext, dir: string): st
       })
       .map((e) => path.join(dir, e.name));
   } catch (err) {
-    ctx.log.debug('listSubdirectories: cannot read directory', dir, err);
+    ctx.log.debug("listSubdirectories: cannot read directory", dir, err);
     return [];
   }
 }

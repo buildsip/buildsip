@@ -8,14 +8,16 @@
  * Extract text from message content that can be a string or an array of blocks.
  * Filters to text blocks and joins with newlines.
  */
-export function extractTextFromBlocks(content: string | Array<{ type: string; text?: string }> | undefined): string {
-  if (!content) return '';
-  if (typeof content === 'string') return content;
+export function extractTextFromBlocks(
+  content: string | Array<{ type: string; text?: string }> | undefined,
+): string {
+  if (!content) return "";
+  if (typeof content === "string") return content;
 
   return content
-    .filter((c) => c.type === 'text' && c.text)
+    .filter((c) => c.type === "text" && c.text)
     .map((c) => c.text!)
-    .join('\n');
+    .join("\n");
 }
 
 /**
@@ -25,12 +27,12 @@ export function extractTextFromBlocks(content: string | Array<{ type: string; te
  */
 export function isSystemContent(text: string): boolean {
   return (
-    text.startsWith('<system-reminder>') ||
-    text.startsWith('<permissions') ||
-    text.startsWith('<environment_context>') ||
-    text.startsWith('<external_links>') ||
-    text.startsWith('<image_files>') ||
-    text.startsWith('# AGENTS.md')
+    text.startsWith("<system-reminder>") ||
+    text.startsWith("<permissions") ||
+    text.startsWith("<environment_context>") ||
+    text.startsWith("<external_links>") ||
+    text.startsWith("<image_files>") ||
+    text.startsWith("# AGENTS.md")
   );
 }
 
@@ -40,7 +42,7 @@ export function isSystemContent(text: string): boolean {
  */
 export function isRealUserMessage(text: string): boolean {
   if (!text) return false;
-  return !text.startsWith('<') && !text.startsWith('/') && !text.includes('Session Handoff');
+  return !text.startsWith("<") && !text.startsWith("/") && !text.includes("Session Handoff");
 }
 
 /**
@@ -49,9 +51,9 @@ export function isRealUserMessage(text: string): boolean {
  * Returns 'owner/repo' or empty string.
  */
 export function extractRepoFromGitUrl(gitUrl: string): string {
-  if (!gitUrl) return '';
+  if (!gitUrl) return "";
   const match = gitUrl.match(/[/:]([\w-]+)\/([\w.-]+?)(?:\.git)?$/);
-  return match ? `${match[1]}/${match[2]}` : '';
+  return match ? `${match[1]}/${match[2]}` : "";
 }
 
 /**

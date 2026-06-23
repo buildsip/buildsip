@@ -1,10 +1,5 @@
 import { cancel, intro, outro, spinner } from "@clack/prompts";
-import {
-  exchangeCode,
-  fetchUser,
-  prepareLogin,
-  startCallbackServer,
-} from "@buildsip/cli-auth";
+import { exchangeCode, fetchUser, prepareLogin, startCallbackServer } from "@buildsip/cli-auth";
 import type { Command } from "commander";
 import open from "open";
 import pc from "picocolors";
@@ -29,9 +24,7 @@ export async function login({
     log.warn("Could not open the browser automatically.");
   }
 
-  progress.message(
-    `Open this URL if your browser did not launch:\n${authorizationUrl}`,
-  );
+  progress.message(`Open this URL if your browser did not launch:\n${authorizationUrl}`);
 
   try {
     const code = await callbackServer.waitForCode();

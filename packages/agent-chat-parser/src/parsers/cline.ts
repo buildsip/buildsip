@@ -1,14 +1,18 @@
-import * as fs from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import * as path from 'node:path';
-import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
+import * as fs from "node:fs/promises";
+import { createRequire } from "node:module";
+import * as path from "node:path";
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  UnifiedSession,
+} from "../types/index";
 import {
   cleanSummary,
   extractRepoFromCwd,
   homeDir,
   type MessageDraft,
   sequenceMessages,
-} from '../utils/parser-helpers';
+} from "../utils/parser-helpers";
 
 const require = createRequire(import.meta.url);
 
@@ -20,40 +24,44 @@ const require = createRequire(import.meta.url);
  */
 const CLINE_EXTENSIONS = [
   {
-    id: 'saoudrizwan.claude-dev',
-    source: 'cline',
-    customStorageSettingKeys: ['cline.customStoragePath'],
-    customStorageEnvKeys: ['CLINE_STORAGE_PATH', 'BUILDSIP_CLINE_STORAGE_PATH'],
+    id: "saoudrizwan.claude-dev",
+    source: "cline",
+    customStorageSettingKeys: ["cline.customStoragePath"],
+    customStorageEnvKeys: ["CLINE_STORAGE_PATH", "BUILDSIP_CLINE_STORAGE_PATH"],
   },
   {
-    id: 'rooveterinaryinc.roo-cline',
-    source: 'roo-code',
-    customStorageSettingKeys: ['roo-cline.customStoragePath'],
-    customStorageEnvKeys: ['ROO_CODE_STORAGE_PATH', 'ROO_CLINE_STORAGE_PATH', 'BUILDSIP_ROO_CODE_STORAGE_PATH'],
+    id: "rooveterinaryinc.roo-cline",
+    source: "roo-code",
+    customStorageSettingKeys: ["roo-cline.customStoragePath"],
+    customStorageEnvKeys: [
+      "ROO_CODE_STORAGE_PATH",
+      "ROO_CLINE_STORAGE_PATH",
+      "BUILDSIP_ROO_CODE_STORAGE_PATH",
+    ],
   },
   {
-    id: 'roo-code.roo-cline',
-    source: 'roo-code',
+    id: "roo-code.roo-cline",
+    source: "roo-code",
     customStorageSettingKeys: [],
     customStorageEnvKeys: [],
   },
   {
-    id: 'kilocode.kilo-code',
-    source: 'kilo-code',
-    customStorageSettingKeys: ['kilo-code.customStoragePath'],
-    customStorageEnvKeys: ['KILO_CODE_STORAGE_PATH', 'BUILDSIP_KILO_CODE_STORAGE_PATH'],
+    id: "kilocode.kilo-code",
+    source: "kilo-code",
+    customStorageSettingKeys: ["kilo-code.customStoragePath"],
+    customStorageEnvKeys: ["KILO_CODE_STORAGE_PATH", "BUILDSIP_KILO_CODE_STORAGE_PATH"],
   },
 ] as const;
 
-type ClineSource = (typeof CLINE_EXTENSIONS)[number]['source'];
+type ClineSource = (typeof CLINE_EXTENSIONS)[number]["source"];
 type ClineExtension = (typeof CLINE_EXTENSIONS)[number];
 
-const UI_MESSAGES_FILE = 'ui_messages.json';
-const API_CONVERSATION_HISTORY_FILE = 'api_conversation_history.json';
-const TASK_METADATA_FILE = 'task_metadata.json';
-const TASK_HISTORY_FILE = 'taskHistory.json';
-const HISTORY_ITEM_FILE = 'history_item.json';
-const HISTORY_INDEX_FILE = '_index.json';
+const UI_MESSAGES_FILE = "ui_messages.json";
+const API_CONVERSATION_HISTORY_FILE = "api_conversation_history.json";
+const TASK_METADATA_FILE = "task_metadata.json";
+const TASK_HISTORY_FILE = "taskHistory.json";
+const HISTORY_ITEM_FILE = "history_item.json";
+const HISTORY_INDEX_FILE = "_index.json";
 const TASK_SIGNAL_FILES = [
   UI_MESSAGES_FILE,
   API_CONVERSATION_HISTORY_FILE,
@@ -77,7 +85,7 @@ interface ClineRawMessage {
   modelInfo?: ClineModelInfo;
 }
 
-type ConversationRole = 'user' | 'assistant';
+type ConversationRole = "user" | "assistant";
 
 interface ConversationState {
   hasSeenApiRequest: boolean;
@@ -195,36 +203,36 @@ function getGlobalStorageBases(): string[] {
   const home = homeDir();
   const bases: string[] = [];
 
-  if (process.platform === 'darwin') {
-    const appSupport = path.join(home, 'Library', 'Application Support');
+  if (process.platform === "darwin") {
+    const appSupport = path.join(home, "Library", "Application Support");
     bases.push(
-      path.join(appSupport, 'Code', 'User', 'globalStorage'),
-      path.join(appSupport, 'Code - Insiders', 'User', 'globalStorage'),
-      path.join(appSupport, 'Cursor', 'User', 'globalStorage'),
-      path.join(appSupport, 'Windsurf', 'User', 'globalStorage'),
+      path.join(appSupport, "Code", "User", "globalStorage"),
+      path.join(appSupport, "Code - Insiders", "User", "globalStorage"),
+      path.join(appSupport, "Cursor", "User", "globalStorage"),
+      path.join(appSupport, "Windsurf", "User", "globalStorage"),
     );
-  } else if (process.platform === 'linux') {
+  } else if (process.platform === "linux") {
     bases.push(
-      path.join(home, '.config', 'Code', 'User', 'globalStorage'),
-      path.join(home, '.config', 'Code - Insiders', 'User', 'globalStorage'),
-      path.join(home, '.config', 'Cursor', 'User', 'globalStorage'),
-      path.join(home, '.config', 'Windsurf', 'User', 'globalStorage'),
+      path.join(home, ".config", "Code", "User", "globalStorage"),
+      path.join(home, ".config", "Code - Insiders", "User", "globalStorage"),
+      path.join(home, ".config", "Cursor", "User", "globalStorage"),
+      path.join(home, ".config", "Windsurf", "User", "globalStorage"),
     );
-  } else if (process.platform === 'win32') {
-    const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+  } else if (process.platform === "win32") {
+    const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
     bases.push(
-      path.join(appData, 'Code', 'User', 'globalStorage'),
-      path.join(appData, 'Code - Insiders', 'User', 'globalStorage'),
-      path.join(appData, 'Cursor', 'User', 'globalStorage'),
-      path.join(appData, 'Windsurf', 'User', 'globalStorage'),
+      path.join(appData, "Code", "User", "globalStorage"),
+      path.join(appData, "Code - Insiders", "User", "globalStorage"),
+      path.join(appData, "Cursor", "User", "globalStorage"),
+      path.join(appData, "Windsurf", "User", "globalStorage"),
     );
   }
 
   bases.push(
-    path.join(home, '.vscode-server', 'data', 'User', 'globalStorage'),
-    path.join(home, '.vscode-server-insiders', 'data', 'User', 'globalStorage'),
-    path.join(home, '.cursor-server', 'data', 'User', 'globalStorage'),
-    path.join(home, '.cursor-server-insiders', 'data', 'User', 'globalStorage'),
+    path.join(home, ".vscode-server", "data", "User", "globalStorage"),
+    path.join(home, ".vscode-server-insiders", "data", "User", "globalStorage"),
+    path.join(home, ".cursor-server", "data", "User", "globalStorage"),
+    path.join(home, ".cursor-server-insiders", "data", "User", "globalStorage"),
   );
 
   return uniquePaths(bases);
@@ -233,16 +241,16 @@ function getGlobalStorageBases(): string[] {
 function getJetBrainsRoots(): string[] {
   const home = homeDir();
 
-  if (process.platform === 'darwin') {
-    return [path.join(home, 'Library', 'Application Support', 'JetBrains')];
+  if (process.platform === "darwin") {
+    return [path.join(home, "Library", "Application Support", "JetBrains")];
   }
 
-  if (process.platform === 'win32') {
-    const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-    return [path.join(appData, 'JetBrains')];
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+    return [path.join(appData, "JetBrains")];
   }
 
-  return [path.join(home, '.config', 'JetBrains')];
+  return [path.join(home, ".config", "JetBrains")];
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -270,20 +278,20 @@ function uniquePaths(paths: string[]): string[] {
 }
 
 function settingsPathForGlobalStorage(base: string): string {
-  return path.join(path.dirname(base), 'settings.json');
+  return path.join(path.dirname(base), "settings.json");
 }
 
 function expandHomePath(value: string): string {
   const trimmed = value.trim();
-  if (trimmed === '~') return homeDir();
-  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
+  if (trimmed === "~") return homeDir();
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
     return path.join(homeDir(), trimmed.slice(2));
   }
   return trimmed;
 }
 
 function stripJsonComments(content: string): string {
-  let result = '';
+  let result = "";
   let inString = false;
   let escaped = false;
   let inLineComment = false;
@@ -294,7 +302,7 @@ function stripJsonComments(content: string): string {
     const next = content[i + 1];
 
     if (inLineComment) {
-      if (char === '\n' || char === '\r') {
+      if (char === "\n" || char === "\r") {
         inLineComment = false;
         result += char;
       }
@@ -302,20 +310,20 @@ function stripJsonComments(content: string): string {
     }
 
     if (inBlockComment) {
-      if (char === '*' && next === '/') {
+      if (char === "*" && next === "/") {
         inBlockComment = false;
         i++;
       }
       continue;
     }
 
-    if (!inString && char === '/' && next === '/') {
+    if (!inString && char === "/" && next === "/") {
       inLineComment = true;
       i++;
       continue;
     }
 
-    if (!inString && char === '/' && next === '*') {
+    if (!inString && char === "/" && next === "*") {
       inBlockComment = true;
       i++;
       continue;
@@ -325,19 +333,22 @@ function stripJsonComments(content: string): string {
 
     if (escaped) {
       escaped = false;
-    } else if (char === '\\' && inString) {
+    } else if (char === "\\" && inString) {
       escaped = true;
     } else if (char === '"') {
       inString = !inString;
     }
   }
 
-  return result.replace(/,\s*([}\]])/gu, '$1');
+  return result.replace(/,\s*([}\]])/gu, "$1");
 }
 
-async function readSettings(ctx: AgentChatParserContext, settingsPath: string): Promise<Record<string, unknown>> {
+async function readSettings(
+  ctx: AgentChatParserContext,
+  settingsPath: string,
+): Promise<Record<string, unknown>> {
   try {
-    const parsed: unknown = JSON.parse(stripJsonComments(await fs.readFile(settingsPath, 'utf8')));
+    const parsed: unknown = JSON.parse(stripJsonComments(await fs.readFile(settingsPath, "utf8")));
     return isRecord(parsed) ? parsed : {};
   } catch (err) {
     ctx.log.debug(`cline: cannot read settings ${settingsPath}`, err);
@@ -409,7 +420,7 @@ async function findDirsNamed(
 async function getJetBrainsGlobalStorageBases(ctx: AgentChatParserContext): Promise<string[]> {
   const bases: string[] = [];
   for (const root of getJetBrainsRoots()) {
-    bases.push(...(await findDirsNamed(ctx, root, 'globalStorage', 3)));
+    bases.push(...(await findDirsNamed(ctx, root, "globalStorage", 3)));
   }
   return uniquePaths(bases);
 }
@@ -417,8 +428,8 @@ async function getJetBrainsGlobalStorageBases(ctx: AgentChatParserContext): Prom
 function getClineCliStorageRoots(): string[] {
   const roots: string[] = [];
   const clineDir = process.env.CLINE_DIR;
-  if (clineDir) roots.push(path.join(clineDir, 'data'));
-  roots.push(path.join(homeDir(), '.cline', 'data'));
+  if (clineDir) roots.push(path.join(clineDir, "data"));
+  roots.push(path.join(homeDir(), ".cline", "data"));
   return uniquePaths(roots);
 }
 
@@ -428,12 +439,12 @@ async function getTaskRoots(
 ): Promise<TaskRoot[]> {
   const roots: TaskRoot[] = [];
 
-  if (!filterSource || filterSource === 'cline') {
+  if (!filterSource || filterSource === "cline") {
     for (const storageRoot of getClineCliStorageRoots()) {
       roots.push({
-        tasksRoot: path.join(storageRoot, 'tasks'),
+        tasksRoot: path.join(storageRoot, "tasks"),
         storageRoot,
-        source: 'cline',
+        source: "cline",
       });
     }
   }
@@ -447,7 +458,7 @@ async function getTaskRoots(
       if (filterSource && ext.source !== filterSource) continue;
       const storageRoot = path.join(base, ext.id);
       roots.push({
-        tasksRoot: path.join(storageRoot, 'tasks'),
+        tasksRoot: path.join(storageRoot, "tasks"),
         storageRoot,
         source: ext.source,
       });
@@ -458,7 +469,7 @@ async function getTaskRoots(
     if (filterSource && ext.source !== filterSource) continue;
     for (const storageRoot of await discoverCustomStorageRoots(ctx, ext, globalStorageBases)) {
       roots.push({
-        tasksRoot: path.join(storageRoot, 'tasks'),
+        tasksRoot: path.join(storageRoot, "tasks"),
         storageRoot,
         source: ext.source,
       });
@@ -535,18 +546,18 @@ function getKiloDataRoots(): string[] {
   const roots: string[] = [];
   const xdgDataHome = cleanEnvPath(process.env.XDG_DATA_HOME);
 
-  if (xdgDataHome) roots.push(path.join(xdgDataHome, 'kilo'));
+  if (xdgDataHome) roots.push(path.join(xdgDataHome, "kilo"));
 
   // Kilo's canonical default on every platform via xdg-basedir fallback.
-  roots.push(path.join(home, '.local', 'share', 'kilo'));
+  roots.push(path.join(home, ".local", "share", "kilo"));
 
-  if (process.platform === 'darwin') {
-    roots.push(path.join(home, 'Library', 'Application Support', 'kilo'));
-  } else if (process.platform === 'win32') {
+  if (process.platform === "darwin") {
+    roots.push(path.join(home, "Library", "Application Support", "kilo"));
+  } else if (process.platform === "win32") {
     const localAppData = cleanEnvPath(process.env.LOCALAPPDATA);
     const appData = cleanEnvPath(process.env.APPDATA);
-    if (localAppData) roots.push(path.join(localAppData, 'kilo'));
-    if (appData) roots.push(path.join(appData, 'kilo'));
+    if (localAppData) roots.push(path.join(localAppData, "kilo"));
+    if (appData) roots.push(path.join(appData, "kilo"));
   }
 
   return uniquePaths(roots);
@@ -555,12 +566,12 @@ function getKiloDataRoots(): string[] {
 function getKiloDbCandidatePaths(): string[] {
   const kiloDb = cleanEnvPath(process.env.KILO_DB);
   if (kiloDb) {
-    if (kiloDb === ':memory:') return [];
+    if (kiloDb === ":memory:") return [];
     if (path.isAbsolute(kiloDb)) return [kiloDb];
     return uniquePaths(getKiloDataRoots().map((root) => path.join(root, kiloDb)));
   }
 
-  return uniquePaths(getKiloDataRoots().map((root) => path.join(root, 'kilo.db')));
+  return uniquePaths(getKiloDataRoots().map((root) => path.join(root, "kilo.db")));
 }
 
 async function discoverKiloDbPaths(): Promise<string[]> {
@@ -578,15 +589,21 @@ async function discoverKiloDbPaths(): Promise<string[]> {
  * handle throws). Read-only is non-negotiable: this parser must never mutate
  * a user's `kilo.db`.
  */
-function openKiloDb(ctx: AgentChatParserContext, dbPath: string): { db: SqliteDatabase; close: () => void } | null {
+function openKiloDb(
+  ctx: AgentChatParserContext,
+  dbPath: string,
+): { db: SqliteDatabase; close: () => void } | null {
   try {
-    const sqliteModule = require('node:sqlite') as {
-      DatabaseSync: new (database: string, options?: { open?: boolean; readOnly?: boolean }) => SqliteDatabase;
+    const sqliteModule = require("node:sqlite") as {
+      DatabaseSync: new (
+        database: string,
+        options?: { open?: boolean; readOnly?: boolean },
+      ) => SqliteDatabase;
     };
     const db = new sqliteModule.DatabaseSync(dbPath, { open: true, readOnly: true });
     return { db, close: () => db.close() };
   } catch (err) {
-    ctx.log.debug('kilo-code: failed to open SQLite database', dbPath, err);
+    ctx.log.debug("kilo-code: failed to open SQLite database", dbPath, err);
     return null;
   }
 }
@@ -594,17 +611,17 @@ function openKiloDb(ctx: AgentChatParserContext, dbPath: string): { db: SqliteDa
 function tableColumns(
   ctx: AgentChatParserContext,
   db: SqliteDatabase,
-  tableName: 'session' | 'message' | 'part' | 'project',
+  tableName: "session" | "message" | "part" | "project",
 ): Set<string> {
   try {
     const rows = db.prepare(`PRAGMA table_info(${tableName})`).all();
     const columns = new Set<string>();
     for (const row of rows) {
-      if (isRecord(row) && typeof row.name === 'string') columns.add(row.name);
+      if (isRecord(row) && typeof row.name === "string") columns.add(row.name);
     }
     return columns;
   } catch (err) {
-    ctx.log.debug('kilo-code: failed to inspect SQLite table', tableName, err);
+    ctx.log.debug("kilo-code: failed to inspect SQLite table", tableName, err);
     return new Set();
   }
 }
@@ -615,18 +632,20 @@ function missingColumns(columns: Set<string>, required: readonly string[]): stri
 
 function inspectKiloDbSchema(ctx: AgentChatParserContext, db: SqliteDatabase): KiloDbSchema {
   const schema: KiloDbSchema = {
-    session: tableColumns(ctx, db, 'session'),
-    message: tableColumns(ctx, db, 'message'),
-    part: tableColumns(ctx, db, 'part'),
-    project: tableColumns(ctx, db, 'project'),
+    session: tableColumns(ctx, db, "session"),
+    message: tableColumns(ctx, db, "message"),
+    part: tableColumns(ctx, db, "part"),
+    project: tableColumns(ctx, db, "project"),
     supported: true,
     warnings: [],
   };
 
-  const required: Array<[keyof Pick<KiloDbSchema, 'session' | 'message' | 'part'>, readonly string[]]> = [
-    ['session', ['id']],
-    ['message', ['id', 'session_id', 'data']],
-    ['part', ['message_id', 'data']],
+  const required: Array<
+    [keyof Pick<KiloDbSchema, "session" | "message" | "part">, readonly string[]]
+  > = [
+    ["session", ["id"]],
+    ["message", ["id", "session_id", "data"]],
+    ["part", ["message_id", "data"]],
   ];
 
   for (const [tableName, requiredColumns] of required) {
@@ -639,7 +658,7 @@ function inspectKiloDbSchema(ctx: AgentChatParserContext, db: SqliteDatabase): K
     const missing = missingColumns(columns, requiredColumns);
     if (missing.length > 0) {
       schema.warnings.push(
-        `Kilo SQLite schema unsupported: "${tableName}" table is missing column(s): ${missing.join(', ')}.`,
+        `Kilo SQLite schema unsupported: "${tableName}" table is missing column(s): ${missing.join(", ")}.`,
       );
     }
   }
@@ -650,47 +669,54 @@ function inspectKiloDbSchema(ctx: AgentChatParserContext, db: SqliteDatabase): K
 
 function warnKiloDbFidelity(ctx: AgentChatParserContext, dbPath: string, warnings: string[]): void {
   if (warnings.length === 0) return;
-  ctx.log.warn('kilo-code: skipping SQLite database with unsupported schema', dbPath, warnings.join(' '));
+  ctx.log.warn(
+    "kilo-code: skipping SQLite database with unsupported schema",
+    dbPath,
+    warnings.join(" "),
+  );
 }
 
 // ── Message Parsing ─────────────────────────────────────────────────────────
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readString(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
-  return typeof value === 'string' ? value : undefined;
+  return typeof value === "string" ? value : undefined;
 }
 
 function readNumber(record: Record<string, unknown>, key: string): number | undefined {
   const value = record[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function readBoolean(record: Record<string, unknown>, key: string): boolean | undefined {
   const value = record[key];
-  return typeof value === 'boolean' ? value : undefined;
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function readStringArray(record: Record<string, unknown>, key: string): string[] | undefined {
   const value = record[key];
   if (!Array.isArray(value)) return undefined;
-  const strings = value.filter((item): item is string => typeof item === 'string');
+  const strings = value.filter((item): item is string => typeof item === "string");
   return strings.length > 0 ? strings : undefined;
 }
 
-function readRecord(record: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
+function readRecord(
+  record: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> | undefined {
   const value = record[key];
   return isRecord(value) ? value : undefined;
 }
 
 function normalizeModelInfo(value: unknown): ClineModelInfo | undefined {
   if (!isRecord(value)) return undefined;
-  const modelId = readString(value, 'modelId') ?? readString(value, 'model_id');
-  const providerId = readString(value, 'providerId') ?? readString(value, 'model_provider_id');
-  const mode = readString(value, 'mode');
+  const modelId = readString(value, "modelId") ?? readString(value, "model_id");
+  const providerId = readString(value, "providerId") ?? readString(value, "model_provider_id");
+  const mode = readString(value, "mode");
   if (!modelId && !providerId && !mode) return undefined;
   return { modelId, providerId, mode };
 }
@@ -698,48 +724,48 @@ function normalizeModelInfo(value: unknown): ClineModelInfo | undefined {
 function normalizeRawMessage(value: unknown): ClineRawMessage | null {
   if (!isRecord(value)) return null;
 
-  const type = readString(value, 'type');
+  const type = readString(value, "type");
   if (!type) return null;
 
   return {
     type,
-    ts: readNumber(value, 'ts'),
-    say: readString(value, 'say'),
-    ask: readString(value, 'ask'),
-    text: readString(value, 'text'),
-    reasoning: readString(value, 'reasoning'),
-    images: readStringArray(value, 'images'),
-    files: readStringArray(value, 'files'),
-    partial: readBoolean(value, 'partial'),
+    ts: readNumber(value, "ts"),
+    say: readString(value, "say"),
+    ask: readString(value, "ask"),
+    text: readString(value, "text"),
+    reasoning: readString(value, "reasoning"),
+    images: readStringArray(value, "images"),
+    files: readStringArray(value, "files"),
+    partial: readBoolean(value, "partial"),
     modelInfo: normalizeModelInfo(value.modelInfo),
   };
 }
 
 function normalizeApiContentBlock(value: unknown): ClineApiContentBlock | null {
   if (!isRecord(value)) return null;
-  const type = readString(value, 'type');
+  const type = readString(value, "type");
   if (!type) return null;
 
   return {
     type,
-    text: readString(value, 'text'),
-    thinking: readString(value, 'thinking'),
-    id: readString(value, 'id'),
-    name: readString(value, 'name'),
-    input: readRecord(value, 'input'),
+    text: readString(value, "text"),
+    thinking: readString(value, "thinking"),
+    id: readString(value, "id"),
+    name: readString(value, "name"),
+    input: readRecord(value, "input"),
     content: value.content,
-    is_error: readBoolean(value, 'is_error'),
+    is_error: readBoolean(value, "is_error"),
   };
 }
 
 function normalizeApiMessage(value: unknown): ClineApiMessage | null {
   if (!isRecord(value)) return null;
-  const rawRole = readString(value, 'role');
-  if (rawRole !== 'user' && rawRole !== 'assistant') return null;
+  const rawRole = readString(value, "role");
+  if (rawRole !== "user" && rawRole !== "assistant") return null;
 
   const rawContent = value.content;
-  let content: ClineApiMessage['content'] | undefined;
-  if (typeof rawContent === 'string') {
+  let content: ClineApiMessage["content"] | undefined;
+  if (typeof rawContent === "string") {
     content = rawContent;
   } else if (Array.isArray(rawContent)) {
     const blocks = rawContent
@@ -751,29 +777,30 @@ function normalizeApiMessage(value: unknown): ClineApiMessage | null {
   if (content === undefined) return null;
 
   return {
-    id: readString(value, 'id'),
+    id: readString(value, "id"),
     role: rawRole,
     content,
-    ts: readNumber(value, 'ts'),
+    ts: readNumber(value, "ts"),
     modelInfo: normalizeModelInfo(value.modelInfo),
   };
 }
 
 function normalizeTaskHistoryItem(value: unknown): ClineTaskHistoryItem | null {
   if (!isRecord(value)) return null;
-  const id = readString(value, 'id');
+  const id = readString(value, "id");
   if (!id) return null;
 
   return {
     id,
-    ts: readNumber(value, 'ts'),
-    task: readString(value, 'task'),
-    cwdOnTaskInitialization: readString(value, 'cwdOnTaskInitialization') ?? readString(value, 'workspace'),
-    workspace: readString(value, 'workspace'),
-    modelId: readString(value, 'modelId'),
-    mode: readString(value, 'mode'),
-    status: readString(value, 'status'),
-    apiConfigName: readString(value, 'apiConfigName'),
+    ts: readNumber(value, "ts"),
+    task: readString(value, "task"),
+    cwdOnTaskInitialization:
+      readString(value, "cwdOnTaskInitialization") ?? readString(value, "workspace"),
+    workspace: readString(value, "workspace"),
+    modelId: readString(value, "modelId"),
+    mode: readString(value, "mode"),
+    status: readString(value, "status"),
+    apiConfigName: readString(value, "apiConfigName"),
   };
 }
 
@@ -793,7 +820,7 @@ async function readJson(
 ): Promise<{ parsed?: unknown; warning?: string }> {
   if (!(await pathExists(filePath))) return {};
   try {
-    return { parsed: JSON.parse(await fs.readFile(filePath, 'utf8')) };
+    return { parsed: JSON.parse(await fs.readFile(filePath, "utf8")) };
   } catch (err) {
     ctx.log.debug(`cline: failed to parse ${label}`, filePath, err);
     return { warning: `${label} could not be parsed (invalid JSON)` };
@@ -833,7 +860,9 @@ async function readApiConversationHistory(
     };
   }
   return {
-    value: parsed.map(normalizeApiMessage).filter((message): message is ClineApiMessage => message !== null),
+    value: parsed
+      .map(normalizeApiMessage)
+      .filter((message): message is ClineApiMessage => message !== null),
   };
 }
 
@@ -851,7 +880,10 @@ interface TaskHistoryReadResult {
   warnings: string[];
 }
 
-async function readTaskHistoryMap(ctx: AgentChatParserContext, paths: string[]): Promise<TaskHistoryReadResult> {
+async function readTaskHistoryMap(
+  ctx: AgentChatParserContext,
+  paths: string[],
+): Promise<TaskHistoryReadResult> {
   const itemsById: TaskHistoryMap = new Map();
   const warnings: string[] = [];
   for (const filePath of paths) {
@@ -891,9 +923,9 @@ async function readTaskHistoryItem(
 
 function taskHistoryCandidatesFromStorageRoot(storageRoot: string): string[] {
   return [
-    path.join(storageRoot, 'state', TASK_HISTORY_FILE),
+    path.join(storageRoot, "state", TASK_HISTORY_FILE),
     path.join(storageRoot, TASK_HISTORY_FILE),
-    path.join(storageRoot, 'tasks', HISTORY_INDEX_FILE),
+    path.join(storageRoot, "tasks", HISTORY_INDEX_FILE),
     path.join(storageRoot, HISTORY_INDEX_FILE),
   ];
 }
@@ -911,12 +943,12 @@ function taskFilesFromDir(taskDir: string, storageRoot: string): TaskFiles {
 }
 
 function inferTaskDirFromOriginalPath(originalPath: string): string {
-  return path.extname(originalPath) === '.json' ? path.dirname(originalPath) : originalPath;
+  return path.extname(originalPath) === ".json" ? path.dirname(originalPath) : originalPath;
 }
 
 function inferStorageRootFromTaskDir(taskDir: string): string {
   const parent = path.dirname(taskDir);
-  return path.basename(parent) === 'tasks' ? path.dirname(parent) : parent;
+  return path.basename(parent) === "tasks" ? path.dirname(parent) : parent;
 }
 
 async function loadTaskData(
@@ -942,7 +974,7 @@ async function loadTaskData(
     perTaskHistoryResult.warning,
     ...historyResult.warnings,
   ]) {
-    if (warning) ctx.log.debug('cline: companion file parse warning', warning);
+    if (warning) ctx.log.debug("cline: companion file parse warning", warning);
   }
 
   return {
@@ -967,20 +999,23 @@ function messageText(msg: ClineRawMessage): string | undefined {
 }
 
 function apiMessageText(message: ClineApiMessage): string {
-  if (typeof message.content === 'string') return message.content.trim();
+  if (typeof message.content === "string") return message.content.trim();
 
   const parts: string[] = [];
   for (const block of message.content) {
-    if (block.type === 'text' && block.text) parts.push(block.text);
+    if (block.type === "text" && block.text) parts.push(block.text);
   }
-  return parts.join('\n').trim();
+  return parts.join("\n").trim();
 }
 
 function buildApiConversation(messages: ClineApiMessage[]): MessageDraft[] {
   const conversation: MessageDraft[] = [];
 
   for (const message of messages) {
-    const text = message.role === 'user' ? stripEnvironmentDetails(apiMessageText(message)) : apiMessageText(message);
+    const text =
+      message.role === "user"
+        ? stripEnvironmentDetails(apiMessageText(message))
+        : apiMessageText(message);
     if (!text) continue;
 
     conversation.push({
@@ -995,7 +1030,7 @@ function buildApiConversation(messages: ClineApiMessage[]): MessageDraft[] {
 }
 
 function isApiRequestMetadata(msg: ClineRawMessage): boolean {
-  return msg.type === 'say' && (msg.say === 'api_req_started' || msg.say === 'api_req_finished');
+  return msg.type === "say" && (msg.say === "api_req_started" || msg.say === "api_req_finished");
 }
 
 function parseJsonRecord(
@@ -1004,12 +1039,12 @@ function parseJsonRecord(
   context: string,
 ): Record<string, unknown> | null {
   if (isRecord(value)) return value;
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   try {
     const parsed: unknown = JSON.parse(value);
     return isRecord(parsed) ? parsed : null;
   } catch (err) {
-    ctx.log.debug('kilo-code: failed to parse SQLite JSON', context, err);
+    ctx.log.debug("kilo-code: failed to parse SQLite JSON", context, err);
     return null;
   }
 }
@@ -1023,38 +1058,38 @@ function firstString(record: Record<string, unknown>, keys: readonly string[]): 
 }
 
 function timestampFromValue(value: unknown): Date | undefined {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
   const millis = value < 10_000_000_000 ? value * 1000 : value;
   const date = new Date(millis);
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-function roleFromMessageData(data: Record<string, unknown>): MessageDraft['role'] | null {
-  const role = readString(data, 'role');
-  if (role === 'user' || role === 'assistant') return role;
+function roleFromMessageData(data: Record<string, unknown>): MessageDraft["role"] | null {
+  const role = readString(data, "role");
+  if (role === "user" || role === "assistant") return role;
   return null;
 }
 
 /** Convert a Kilo part record into visible message content. */
 function extractKiloPartContent(partData: Record<string, unknown>): string {
-  const type = readString(partData, 'type');
+  const type = readString(partData, "type");
 
-  if (type === 'text') {
-    return firstString(partData, ['text', 'content', 'message']) ?? '';
+  if (type === "text") {
+    return firstString(partData, ["text", "content", "message"]) ?? "";
   }
 
-  return '';
+  return "";
 }
 
 function selectColumns(columns: Set<string>, preferred: readonly string[]): string {
-  return preferred.filter((column) => columns.has(column)).join(', ');
+  return preferred.filter((column) => columns.has(column)).join(", ");
 }
 
 function orderBy(columns: Set<string>, preferred: string, fallback: string): string {
   if (columns.has(preferred) && columns.has(fallback)) return `${preferred} ASC, ${fallback} ASC`;
   if (columns.has(preferred)) return `${preferred} ASC`;
   if (columns.has(fallback)) return `${fallback} ASC`;
-  return 'rowid ASC';
+  return "rowid ASC";
 }
 
 interface KiloDbDiscoveryInfo {
@@ -1080,17 +1115,17 @@ function readKiloDbDiscoveryInfo(
   schema: KiloDbSchema,
   sessionId: string,
 ): KiloDbDiscoveryInfo {
-  const messageColumns = selectColumns(schema.message, ['id', 'time_created', 'data']);
+  const messageColumns = selectColumns(schema.message, ["id", "time_created", "data"]);
   let msgRows: unknown[];
   try {
     msgRows = db
       .prepare(
-        `SELECT ${messageColumns} FROM message WHERE session_id = ? ORDER BY ${orderBy(schema.message, 'time_created', 'id')}`,
+        `SELECT ${messageColumns} FROM message WHERE session_id = ? ORDER BY ${orderBy(schema.message, "time_created", "id")}`,
       )
       .all(sessionId);
   } catch (err) {
-    ctx.log.debug('kilo-code: failed to read message metadata for discovery', sessionId, err);
-    return { rowCount: 0, firstUserMessage: '' };
+    ctx.log.debug("kilo-code: failed to read message metadata for discovery", sessionId, err);
+    return { rowCount: 0, firstUserMessage: "" };
   }
 
   let firstTimestamp: Date | undefined;
@@ -1101,7 +1136,7 @@ function readKiloDbDiscoveryInfo(
 
   for (const msgRow of msgRows) {
     if (!isRecord(msgRow)) continue;
-    const messageId = readString(msgRow, 'id');
+    const messageId = readString(msgRow, "id");
     if (!messageId) continue;
 
     const messageData = parseJsonRecord(ctx, msgRow.data, `message:${messageId}`);
@@ -1112,15 +1147,23 @@ function readKiloDbDiscoveryInfo(
 
     const timestamp = timestampFromValue(msgRow.time_created);
     if (timestamp) {
-      if (!firstTimestamp || timestamp.getTime() < firstTimestamp.getTime()) firstTimestamp = timestamp;
-      if (!lastTimestamp || timestamp.getTime() > lastTimestamp.getTime()) lastTimestamp = timestamp;
+      if (!firstTimestamp || timestamp.getTime() < firstTimestamp.getTime())
+        firstTimestamp = timestamp;
+      if (!lastTimestamp || timestamp.getTime() > lastTimestamp.getTime())
+        lastTimestamp = timestamp;
     }
 
-    if (role === 'user' && !firstUserMessageId) firstUserMessageId = messageId;
-    if (role === 'assistant' && !firstAssistantMessageId) {
+    if (role === "user" && !firstUserMessageId) firstUserMessageId = messageId;
+    if (role === "assistant" && !firstAssistantMessageId) {
       firstAssistantMessageId = messageId;
       if (!model) {
-        model = firstString(messageData, ['modelID', 'modelId', 'model', 'providerID', 'providerId']);
+        model = firstString(messageData, [
+          "modelID",
+          "modelId",
+          "model",
+          "providerID",
+          "providerId",
+        ]);
       }
     }
 
@@ -1129,7 +1172,7 @@ function readKiloDbDiscoveryInfo(
 
   const firstUserMessage = firstUserMessageId
     ? readKiloDbPartsContent(ctx, db, schema, firstUserMessageId)
-    : '';
+    : "";
 
   return {
     rowCount: msgRows.length,
@@ -1147,17 +1190,17 @@ function readKiloDbPartsContent(
   schema: KiloDbSchema,
   messageId: string,
 ): string {
-  const partColumns = selectColumns(schema.part, ['id', 'message_id', 'time_created', 'data']);
+  const partColumns = selectColumns(schema.part, ["id", "message_id", "time_created", "data"]);
   let partRows: unknown[];
   try {
     partRows = db
       .prepare(
-        `SELECT ${partColumns} FROM part WHERE message_id = ? ORDER BY ${orderBy(schema.part, 'time_created', 'id')}`,
+        `SELECT ${partColumns} FROM part WHERE message_id = ? ORDER BY ${orderBy(schema.part, "time_created", "id")}`,
       )
       .all(messageId);
   } catch (err) {
-    ctx.log.debug('kilo-code: failed to read part rows', messageId, err);
-    return '';
+    ctx.log.debug("kilo-code: failed to read part rows", messageId, err);
+    return "";
   }
 
   const contentParts: string[] = [];
@@ -1168,7 +1211,7 @@ function readKiloDbPartsContent(
     const content = extractKiloPartContent(partData).trim();
     if (content) contentParts.push(content);
   }
-  return contentParts.join('\n').trim();
+  return contentParts.join("\n").trim();
 }
 
 function readKiloDbMessagesFromHandle(
@@ -1177,11 +1220,16 @@ function readKiloDbMessagesFromHandle(
   schema: KiloDbSchema,
   sessionId: string,
 ): KiloDbMessageRead {
-  const messageColumns = selectColumns(schema.message, ['id', 'session_id', 'time_created', 'data']);
-  const partColumns = selectColumns(schema.part, ['id', 'message_id', 'time_created', 'data']);
+  const messageColumns = selectColumns(schema.message, [
+    "id",
+    "session_id",
+    "time_created",
+    "data",
+  ]);
+  const partColumns = selectColumns(schema.part, ["id", "message_id", "time_created", "data"]);
   const msgRows = db
     .prepare(
-      `SELECT ${messageColumns} FROM message WHERE session_id = ? ORDER BY ${orderBy(schema.message, 'time_created', 'id')}`,
+      `SELECT ${messageColumns} FROM message WHERE session_id = ? ORDER BY ${orderBy(schema.message, "time_created", "id")}`,
     )
     .all(sessionId);
 
@@ -1192,7 +1240,7 @@ function readKiloDbMessagesFromHandle(
 
   for (const msgRow of msgRows) {
     if (!isRecord(msgRow)) continue;
-    const messageId = readString(msgRow, 'id');
+    const messageId = readString(msgRow, "id");
     if (!messageId) continue;
 
     const messageData = parseJsonRecord(ctx, msgRow.data, `message:${messageId}`);
@@ -1203,17 +1251,21 @@ function readKiloDbMessagesFromHandle(
 
     const timestamp = timestampFromValue(msgRow.time_created);
     if (timestamp) {
-      if (!firstTimestamp || timestamp.getTime() < firstTimestamp.getTime()) firstTimestamp = timestamp;
-      if (!lastTimestamp || timestamp.getTime() > lastTimestamp.getTime()) lastTimestamp = timestamp;
+      if (!firstTimestamp || timestamp.getTime() < firstTimestamp.getTime())
+        firstTimestamp = timestamp;
+      if (!lastTimestamp || timestamp.getTime() > lastTimestamp.getTime())
+        lastTimestamp = timestamp;
     }
 
-    if (role === 'assistant' && !model) {
-      model = firstString(messageData, ['modelID', 'modelId', 'model', 'providerID', 'providerId']) ?? undefined;
+    if (role === "assistant" && !model) {
+      model =
+        firstString(messageData, ["modelID", "modelId", "model", "providerID", "providerId"]) ??
+        undefined;
     }
 
     const partRows = db
       .prepare(
-        `SELECT ${partColumns} FROM part WHERE message_id = ? ORDER BY ${orderBy(schema.part, 'time_created', 'id')}`,
+        `SELECT ${partColumns} FROM part WHERE message_id = ? ORDER BY ${orderBy(schema.part, "time_created", "id")}`,
       )
       .all(messageId);
 
@@ -1227,7 +1279,7 @@ function readKiloDbMessagesFromHandle(
       if (content) contentParts.push(content);
     }
 
-    const content = contentParts.join('\n').trim();
+    const content = contentParts.join("\n").trim();
     if (content) messages.push({ role, content, timestamp, sourceId: messageId });
   }
 
@@ -1240,13 +1292,13 @@ function getProjectWorktree(
   schema: KiloDbSchema,
   projectId: string | undefined,
 ): string {
-  if (!projectId || !schema.project.has('id') || !schema.project.has('worktree')) return '';
+  if (!projectId || !schema.project.has("id") || !schema.project.has("worktree")) return "";
   try {
-    const row = db.prepare('SELECT worktree FROM project WHERE id = ?').get(projectId);
-    return isRecord(row) ? (readString(row, 'worktree') ?? '') : '';
+    const row = db.prepare("SELECT worktree FROM project WHERE id = ?").get(projectId);
+    return isRecord(row) ? (readString(row, "worktree") ?? "") : "";
   } catch (err) {
-    ctx.log.debug('kilo-code: failed to read SQLite project row', projectId, err);
-    return '';
+    ctx.log.debug("kilo-code: failed to read SQLite project row", projectId, err);
+    return "";
   }
 }
 
@@ -1255,43 +1307,43 @@ function getProjectWorktree(
  * Returns null for messages that aren't conversation turns (metadata, api events).
  */
 function classifyRole(msg: ClineRawMessage, state: ConversationState): ConversationRole | null {
-  if (msg.type === 'ask') {
+  if (msg.type === "ask") {
     switch (msg.ask) {
-      case 'followup':
-      case 'plan_mode_respond':
-      case 'act_mode_respond':
-      case 'completion_result':
-      case 'resume_task':
-      case 'resume_completed_task':
-      case 'mistake_limit_reached':
-      case 'api_req_failed':
-      case 'new_task':
-      case 'condense':
-      case 'summarize_task':
-      case 'report_bug':
-        return 'assistant';
+      case "followup":
+      case "plan_mode_respond":
+      case "act_mode_respond":
+      case "completion_result":
+      case "resume_task":
+      case "resume_completed_task":
+      case "mistake_limit_reached":
+      case "api_req_failed":
+      case "new_task":
+      case "condense":
+      case "summarize_task":
+      case "report_bug":
+        return "assistant";
 
       default:
         return null;
     }
   }
 
-  if (msg.type !== 'say') return null;
+  if (msg.type !== "say") return null;
 
   switch (msg.say) {
-    case 'task':
-    case 'user_feedback':
-    case 'user_feedback_diff':
-      return 'user';
+    case "task":
+    case "user_feedback":
+    case "user_feedback_diff":
+      return "user";
 
-    case 'text':
+    case "text":
       // Roo Code stores the initial user task as the first text message.
       // Once an API request exists, text messages are assistant output, including
       // partial:false finalizations of prior streaming assistant chunks.
-      return state.hasSeenApiRequest || msg.partial !== undefined ? 'assistant' : 'user';
+      return state.hasSeenApiRequest || msg.partial !== undefined ? "assistant" : "user";
 
-    case 'completion_result':
-      return 'assistant';
+    case "completion_result":
+      return "assistant";
 
     default:
       // api_req_started, api_req_finished, and other event types → not conversation
@@ -1311,13 +1363,13 @@ function extractFirstUserMessage(messages: ClineRawMessage[]): string {
   for (const msg of messages) {
     const role = classifyRole(msg, state);
     if (isApiRequestMetadata(msg)) state.hasSeenApiRequest = true;
-    if (role !== 'user') continue;
+    if (role !== "user") continue;
     const content = messageText(msg);
     if (!content) continue;
     const text = content.trim();
     if (text) return text;
   }
-  return '';
+  return "";
 }
 
 /**
@@ -1341,9 +1393,9 @@ function buildConversation(messages: ClineRawMessage[]): MessageDraft[] {
     if (!text) continue;
 
     const ts = msg.ts ? new Date(msg.ts) : undefined;
-    const kind = `${msg.type}:${msg.type === 'ask' ? msg.ask : msg.say}`;
+    const kind = `${msg.type}:${msg.type === "ask" ? msg.ask : msg.say}`;
     const canReplaceStream =
-      role === 'assistant' &&
+      role === "assistant" &&
       streamState?.index === result.length - 1 &&
       streamState.role === role &&
       streamState.kind === kind;
@@ -1358,7 +1410,7 @@ function buildConversation(messages: ClineRawMessage[]): MessageDraft[] {
     }
 
     streamState =
-      role === 'assistant' && msg.partial === true
+      role === "assistant" && msg.partial === true
         ? { index: result.length - 1, role, kind }
         : msg.partial === false
           ? undefined
@@ -1370,15 +1422,15 @@ function buildConversation(messages: ClineRawMessage[]): MessageDraft[] {
 
 function extractFirstApiUserMessage(messages: ClineApiMessage[]): string {
   for (const message of messages) {
-    if (message.role !== 'user') continue;
+    if (message.role !== "user") continue;
     const text = apiMessageText(message);
     if (text) return stripEnvironmentDetails(text);
   }
-  return '';
+  return "";
 }
 
 function stripEnvironmentDetails(text: string): string {
-  return text.replace(/<environment_details>[\s\S]*?<\/environment_details>/giu, '').trim();
+  return text.replace(/<environment_details>[\s\S]*?<\/environment_details>/giu, "").trim();
 }
 
 function extractModelFromApiHistory(messages: ClineApiMessage[]): string | undefined {
@@ -1419,17 +1471,17 @@ function resolveModel(data: LoadedTaskData): string | undefined {
 }
 
 function looksLikePath(value: string): boolean {
-  return value.startsWith('/') || value.startsWith('~/') || /^[A-Za-z]:[\\/]/u.test(value);
+  return value.startsWith("/") || value.startsWith("~/") || /^[A-Za-z]:[\\/]/u.test(value);
 }
 
 const CWD_KEYS = [
-  'cwd',
-  'cwdOnTaskInitialization',
-  'currentWorkingDirectory',
-  'workingDirectory',
-  'workspacePath',
-  'rootPath',
-  'projectRoot',
+  "cwd",
+  "cwdOnTaskInitialization",
+  "currentWorkingDirectory",
+  "workingDirectory",
+  "workspacePath",
+  "rootPath",
+  "projectRoot",
 ];
 
 /**
@@ -1448,7 +1500,7 @@ const CWD_KEYS = [
 function findCwdInValue(value: unknown, depth = 0): string | undefined {
   if (depth > 4) return undefined;
 
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     // Only trust strings that carry an explicit "cwd: ..." / "Current Working
     // Directory ..." marker. A bare path-like string is not enough.
     return extractCwdFromText(value);
@@ -1481,7 +1533,10 @@ function findCwdInValue(value: unknown, depth = 0): string | undefined {
   return undefined;
 }
 
-function extractCwdFromUiApiEvents(ctx: AgentChatParserContext, messages: ClineRawMessage[]): string | undefined {
+function extractCwdFromUiApiEvents(
+  ctx: AgentChatParserContext,
+  messages: ClineRawMessage[],
+): string | undefined {
   for (const message of messages) {
     if (!isApiRequestMetadata(message) || !message.text) continue;
     try {
@@ -1489,7 +1544,7 @@ function extractCwdFromUiApiEvents(ctx: AgentChatParserContext, messages: ClineR
       const cwd = findCwdInValue(parsed);
       if (cwd) return cwd;
     } catch (err) {
-      ctx.log.debug('cline: skipping malformed API request metadata while extracting cwd', err);
+      ctx.log.debug("cline: skipping malformed API request metadata while extracting cwd", err);
     }
   }
   return undefined;
@@ -1526,7 +1581,7 @@ function extractCwdFromApiHistory(messages: ClineApiMessage[]): string | undefin
  * (`C:\Users\me\repo`) correctly.
  */
 function normalizeCwd(value: string): string {
-  return value.replace(/\\/g, '/');
+  return value.replace(/\\/g, "/");
 }
 
 function resolveCwd(ctx: AgentChatParserContext, data: LoadedTaskData): string {
@@ -1534,8 +1589,8 @@ function resolveCwd(ctx: AgentChatParserContext, data: LoadedTaskData): string {
     data.taskHistoryItem?.cwdOnTaskInitialization ??
     extractCwdFromUiApiEvents(ctx, data.uiMessages) ??
     extractCwdFromApiHistory(data.apiMessages) ??
-    '';
-  return raw ? normalizeCwd(raw) : '';
+    "";
+  return raw ? normalizeCwd(raw) : "";
 }
 
 async function existingCompanionStats(
@@ -1543,11 +1598,21 @@ async function existingCompanionStats(
   files: TaskFiles,
 ): Promise<Array<{ filePath: string; size: number; birthtime: Date; mtime: Date }>> {
   const stats: Array<{ filePath: string; size: number; birthtime: Date; mtime: Date }> = [];
-  for (const filePath of [files.uiMessages, files.apiConversationHistory, files.taskMetadata, files.historyItem]) {
+  for (const filePath of [
+    files.uiMessages,
+    files.apiConversationHistory,
+    files.taskMetadata,
+    files.historyItem,
+  ]) {
     if (!(await pathExists(filePath))) continue;
     try {
       const fileStats = await fs.stat(filePath);
-      stats.push({ filePath, size: fileStats.size, birthtime: fileStats.birthtime, mtime: fileStats.mtime });
+      stats.push({
+        filePath,
+        size: fileStats.size,
+        birthtime: fileStats.birthtime,
+        mtime: fileStats.mtime,
+      });
     } catch (err) {
       ctx.log.debug(`cline: cannot stat companion file ${filePath}`, err);
     }
@@ -1594,13 +1659,14 @@ async function parseSessionsForSource(
       }
 
       const data = await loadTaskData(ctx, taskDir, storageRoot, taskId, await cachedHistory);
-      if (data.uiMessages.length === 0 && data.apiMessages.length === 0 && !data.taskHistoryItem) continue;
+      if (data.uiMessages.length === 0 && data.apiMessages.length === 0 && !data.taskHistoryItem)
+        continue;
 
       const firstUserMsg =
         extractFirstUserMessage(data.uiMessages) ||
         extractFirstApiUserMessage(data.apiMessages) ||
         data.taskHistoryItem?.task ||
-        '';
+        "";
       if (!cleanSummary(firstUserMsg)) continue; // Skip sessions with no real user message
 
       const stats = await existingCompanionStats(ctx, data.files);
@@ -1654,34 +1720,38 @@ async function parseKiloDbSessions(ctx: AgentChatParserContext): Promise<Unified
 
       const dbStats = await fs.stat(dbPath);
       const sessionColumns = selectColumns(schema.session, [
-        'id',
-        'project_id',
-        'slug',
-        'directory',
-        'title',
-        'version',
-        'time_created',
-        'time_updated',
+        "id",
+        "project_id",
+        "slug",
+        "directory",
+        "title",
+        "version",
+        "time_created",
+        "time_updated",
       ]);
-      const sortColumn = schema.session.has('time_updated') ? 'time_updated' : 'id';
-      const rows = db.prepare(`SELECT ${sessionColumns} FROM session ORDER BY ${sortColumn} DESC`).all();
+      const sortColumn = schema.session.has("time_updated") ? "time_updated" : "id";
+      const rows = db
+        .prepare(`SELECT ${sessionColumns} FROM session ORDER BY ${sortColumn} DESC`)
+        .all();
 
       for (const row of rows) {
         if (!isRecord(row)) continue;
-        const id = readString(row, 'id');
+        const id = readString(row, "id");
         if (!id) continue;
 
         const discoveryInfo = readKiloDbDiscoveryInfo(ctx, db, schema, id);
         if (discoveryInfo.rowCount === 0) continue;
 
-        const projectId = readString(row, 'project_id');
-        const cwd = readString(row, 'directory') || getProjectWorktree(ctx, db, schema, projectId);
-        const createdAt = timestampFromValue(row.time_created) ?? discoveryInfo.firstTimestamp ?? dbStats.birthtime;
-        const updatedAt = timestampFromValue(row.time_updated) ?? discoveryInfo.lastTimestamp ?? dbStats.mtime;
+        const projectId = readString(row, "project_id");
+        const cwd = readString(row, "directory") || getProjectWorktree(ctx, db, schema, projectId);
+        const createdAt =
+          timestampFromValue(row.time_created) ?? discoveryInfo.firstTimestamp ?? dbStats.birthtime;
+        const updatedAt =
+          timestampFromValue(row.time_updated) ?? discoveryInfo.lastTimestamp ?? dbStats.mtime;
 
         const session: UnifiedSession = {
           id,
-          source: 'kilo-code',
+          source: "kilo-code",
           cwd,
           repo: extractRepoFromCwd(cwd),
           createdAt,
@@ -1696,13 +1766,15 @@ async function parseKiloDbSessions(ctx: AgentChatParserContext): Promise<Unified
         }
       }
     } catch (err) {
-      ctx.log.debug('kilo-code: failed to parse SQLite sessions', dbPath, err);
+      ctx.log.debug("kilo-code: failed to parse SQLite sessions", dbPath, err);
     } finally {
       close();
     }
   }
 
-  return Array.from(sessionsById.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  return Array.from(sessionsById.values()).sort(
+    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+  );
 }
 
 async function parseKiloSessionsAll(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
@@ -1710,13 +1782,15 @@ async function parseKiloSessionsAll(ctx: AgentChatParserContext): Promise<Unifie
   for (const session of await parseKiloDbSessions(ctx)) {
     sessionsById.set(session.id, session);
   }
-  for (const session of await parseSessionsForSource(ctx, 'kilo-code')) {
+  for (const session of await parseSessionsForSource(ctx, "kilo-code")) {
     const existing = sessionsById.get(session.id);
     if (!existing || existing.updatedAt.getTime() < session.updatedAt.getTime()) {
       sessionsById.set(session.id, session);
     }
   }
-  return Array.from(sessionsById.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  return Array.from(sessionsById.values()).sort(
+    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+  );
 }
 
 // ── Context Extraction (shared) ─────────────────────────────────────────────
@@ -1746,11 +1820,11 @@ async function parseMessagesShared(
 }
 
 function isTaskCompanionPath(filePath: string): boolean {
-  return path.basename(path.dirname(path.dirname(filePath))) === 'tasks';
+  return path.basename(path.dirname(path.dirname(filePath))) === "tasks";
 }
 
 function isKiloDbSession(session: UnifiedSession): boolean {
-  return session.source === 'kilo-code' && !isTaskCompanionPath(session.originalPath);
+  return session.source === "kilo-code" && !isTaskCompanionPath(session.originalPath);
 }
 
 function emptyKiloDbConversation(session: UnifiedSession): ParsedAgentConversation {
@@ -1782,7 +1856,12 @@ async function extractKiloDbContext(
       messages: sequenceMessages(messageRead.messages),
     };
   } catch (err) {
-    ctx.log.debug('kilo-code: failed to extract SQLite context', session.originalPath, session.id, err);
+    ctx.log.debug(
+      "kilo-code: failed to extract SQLite context",
+      session.originalPath,
+      session.id,
+      err,
+    );
     return emptyKiloDbConversation(session);
   } finally {
     close();
@@ -1793,7 +1872,7 @@ async function extractKiloDbContext(
 
 /** Discover sessions for Cline only */
 export async function parseClineSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
-  return parseSessionsForSource(ctx, 'cline');
+  return parseSessionsForSource(ctx, "cline");
 }
 
 /** Extract visible messages from a Cline session */
@@ -1808,7 +1887,7 @@ export async function extractClineContext(
 
 /** Discover sessions for Roo Code only */
 export async function parseRooCodeSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
-  return parseSessionsForSource(ctx, 'roo-code');
+  return parseSessionsForSource(ctx, "roo-code");
 }
 
 /** Extract visible messages from a Roo Code session */
@@ -1822,7 +1901,9 @@ export async function extractRooCodeContext(
 // ── Public API: Kilo Code ───────────────────────────────────────────────────
 
 /** Discover sessions for Kilo Code only */
-export async function parseKiloCodeSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+export async function parseKiloCodeSessions(
+  ctx: AgentChatParserContext,
+): Promise<UnifiedSession[]> {
   return parseKiloSessionsAll(ctx);
 }
 

@@ -25,9 +25,7 @@ export function registerPathsCommand(program: Command) {
         );
       } catch (error) {
         log.debug(error);
-        cancel(
-          error instanceof Error ? error.message : "Could not show paths.",
-        );
+        cancel(error instanceof Error ? error.message : "Could not show paths.");
         process.exitCode = 1;
       }
     });

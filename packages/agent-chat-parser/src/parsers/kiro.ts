@@ -1,31 +1,47 @@
-import * as fs from 'node:fs';
-import { promises as fsp } from 'node:fs';
-import * as path from 'node:path';
-import type { AgentChatParserContext, ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
-import { findFiles, listSubdirectories, mapConcurrent } from '../utils/fs-helpers';
-import { readJsonlFile } from '../utils/jsonl';
-import { extractRepoFromCwd, homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
-import { matchesCwd } from '../utils/slug';
+import * as fs from "node:fs";
+import { promises as fsp } from "node:fs";
+import * as path from "node:path";
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  SessionParseOptions,
+  UnifiedSession,
+} from "../types/index";
+import { findFiles, listSubdirectories, mapConcurrent } from "../utils/fs-helpers";
+import { readJsonlFile } from "../utils/jsonl";
+import {
+  extractRepoFromCwd,
+  homeDir,
+  type MessageDraft,
+  sequenceMessages,
+} from "../utils/parser-helpers";
+import { matchesCwd } from "../utils/slug";
 
 // ── Kiro Storage ────────────────────────────────────────────────────────────
 
-const KIRO_AGENT_RELATIVE_PATH = ['User', 'globalStorage', 'kiro.kiroagent', 'workspace-sessions'];
+const KIRO_AGENT_RELATIVE_PATH = ["User", "globalStorage", "kiro.kiroagent", "workspace-sessions"];
 // Canonical ACP `session/update` discriminator values per the agent-client-protocol schema:
 //   https://github.com/zed-industries/agent-client-protocol/blob/main/schema/schema.json
 // Verified against Kiro CLI v1.29.0 docs (kiro.dev/docs/cli/acp/) and the empirical reference at
 //   https://github.com/dwalleck/cyril/blob/main/docs/kiro-acp-protocol.md
-const ACP_SESSION_UPDATE_KEYS = ['sessionUpdate', 'type', 'kind', 'updateType', 'eventType'] as const;
-const ACP_AGENT_MESSAGE_CHUNK = new Set(['agent_message_chunk', 'AgentMessageChunk']);
-const ACP_AGENT_THOUGHT_CHUNK = new Set(['agent_thought_chunk', 'AgentThoughtChunk']);
-const ACP_USER_MESSAGE_CHUNK = new Set(['user_message_chunk', 'UserMessageChunk']);
-const ACP_AGENT_MESSAGE = new Set(['agent_message', 'AgentMessage']);
-const ACP_USER_MESSAGE = new Set(['user_message', 'UserMessage']);
+const ACP_SESSION_UPDATE_KEYS = [
+  "sessionUpdate",
+  "type",
+  "kind",
+  "updateType",
+  "eventType",
+] as const;
+const ACP_AGENT_MESSAGE_CHUNK = new Set(["agent_message_chunk", "AgentMessageChunk"]);
+const ACP_AGENT_THOUGHT_CHUNK = new Set(["agent_thought_chunk", "AgentThoughtChunk"]);
+const ACP_USER_MESSAGE_CHUNK = new Set(["user_message_chunk", "UserMessageChunk"]);
+const ACP_AGENT_MESSAGE = new Set(["agent_message", "AgentMessage"]);
+const ACP_USER_MESSAGE = new Set(["user_message", "UserMessage"]);
 // The canonical ACP spec has no `TurnEnd` event — turns end via the JSON-RPC response to
 // `session/prompt` with `stopReason: end_turn`. We still recognise the legacy fixture name
 // so synthesised `TurnEnd` events keep flushing accumulators harmlessly.
-const ACP_TURN_END = new Set(['turn_end', 'TurnEnd']);
+const ACP_TURN_END = new Set(["turn_end", "TurnEnd"]);
 
-type KiroSurface = 'ide-workspace' | 'acp-jsonl';
+type KiroSurface = "ide-workspace" | "acp-jsonl";
 
 interface KiroSessionRef {
   surface: KiroSurface;
@@ -38,48 +54,56 @@ interface KiroSessionRef {
 }
 
 type JsonRecord = Record<string, unknown>;
-type KiroStatInfo = { stats: Pick<fs.Stats, 'size' | 'birthtime' | 'mtime'>; originalPath: string };
+type KiroStatInfo = { stats: Pick<fs.Stats, "size" | "birthtime" | "mtime">; originalPath: string };
 
 function getKiroWorkspaceSessionDirs(): string[] {
   const home = homeDir();
   const observedDirs = [
-    path.join(home, 'Library', 'Application Support', 'Kiro', ...KIRO_AGENT_RELATIVE_PATH),
-    path.join(home, '.config', 'Kiro', ...KIRO_AGENT_RELATIVE_PATH),
-    path.join(home, 'AppData', 'Roaming', 'Kiro', ...KIRO_AGENT_RELATIVE_PATH),
+    path.join(home, "Library", "Application Support", "Kiro", ...KIRO_AGENT_RELATIVE_PATH),
+    path.join(home, ".config", "Kiro", ...KIRO_AGENT_RELATIVE_PATH),
+    path.join(home, "AppData", "Roaming", "Kiro", ...KIRO_AGENT_RELATIVE_PATH),
   ];
 
   // Older parser revisions used this path. Keep it as a read-only fallback.
-  const legacyDirs = [path.join(home, 'Library', 'Application Support', 'Kiro', 'workspace-sessions')];
+  const legacyDirs = [
+    path.join(home, "Library", "Application Support", "Kiro", "workspace-sessions"),
+  ];
 
   return Array.from(new Set([...observedDirs, ...legacyDirs])).filter((dir) => fs.existsSync(dir));
 }
 
 function getKiroAcpSessionDir(): string {
-  return path.join(homeDir(), '.kiro', 'sessions', 'cli');
+  return path.join(homeDir(), ".kiro", "sessions", "cli");
 }
 
 function isKiroAcpSessionPath(filePath: string): boolean {
   const sessionDir = path.dirname(filePath);
   return (
-    path.basename(sessionDir) === 'cli' &&
-    path.basename(path.dirname(sessionDir)) === 'sessions' &&
-    path.basename(path.dirname(path.dirname(sessionDir))) === '.kiro'
+    path.basename(sessionDir) === "cli" &&
+    path.basename(path.dirname(sessionDir)) === "sessions" &&
+    path.basename(path.dirname(path.dirname(sessionDir))) === ".kiro"
   );
 }
 
-function getSiblingPath(filePath: string, extension: '.json' | '.jsonl'): string {
-  return path.join(path.dirname(filePath), `${path.basename(filePath, path.extname(filePath))}${extension}`);
+function getSiblingPath(filePath: string, extension: ".json" | ".jsonl"): string {
+  return path.join(
+    path.dirname(filePath),
+    `${path.basename(filePath, path.extname(filePath))}${extension}`,
+  );
 }
 
 function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function readJsonFile(ctx: AgentChatParserContext, filePath: string): Promise<unknown | undefined> {
+async function readJsonFile(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<unknown | undefined> {
   try {
-    return JSON.parse(await fsp.readFile(filePath, 'utf8'));
+    return JSON.parse(await fsp.readFile(filePath, "utf8"));
   } catch (err) {
-    ctx.log.debug('kiro: failed to parse json file', filePath, err);
+    ctx.log.debug("kiro: failed to parse json file", filePath, err);
     return undefined;
   }
 }
@@ -88,12 +112,15 @@ function getString(record: JsonRecord | undefined, keys: readonly string[]): str
   if (!record) return undefined;
   for (const key of keys) {
     const value = record[key];
-    if (typeof value === 'string' && value.trim().length > 0) return value;
+    if (typeof value === "string" && value.trim().length > 0) return value;
   }
   return undefined;
 }
 
-function getRecord(record: JsonRecord | undefined, keys: readonly string[]): JsonRecord | undefined {
+function getRecord(
+  record: JsonRecord | undefined,
+  keys: readonly string[],
+): JsonRecord | undefined {
   if (!record) return undefined;
   for (const key of keys) {
     const value = record[key];
@@ -105,13 +132,13 @@ function getRecord(record: JsonRecord | undefined, keys: readonly string[]): Jso
 function parseDateValue(value: unknown): Date | undefined {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
 
-  if (typeof value === 'number' && Number.isFinite(value)) {
+  if (typeof value === "number" && Number.isFinite(value)) {
     const millis = value > 0 && value < 1_000_000_000_000 ? value * 1000 : value;
     const date = new Date(millis);
     return Number.isNaN(date.getTime()) ? undefined : date;
   }
 
-  if (typeof value === 'string' && value.trim().length > 0) {
+  if (typeof value === "string" && value.trim().length > 0) {
     const trimmed = value.trim();
     const numeric = Number(trimmed);
     if (Number.isFinite(numeric)) return parseDateValue(numeric);
@@ -132,23 +159,26 @@ function getDate(record: JsonRecord | undefined, keys: readonly string[]): Date 
   return undefined;
 }
 
-function decodeWorkspaceFolderName(ctx: AgentChatParserContext, folderName: string): string | undefined {
-  const normalized = folderName.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+function decodeWorkspaceFolderName(
+  ctx: AgentChatParserContext,
+  folderName: string,
+): string | undefined {
+  const normalized = folderName.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   try {
-    const decoded = Buffer.from(padded, 'base64').toString('utf8');
+    const decoded = Buffer.from(padded, "base64").toString("utf8");
     const trimmed = decoded.trim();
     if (
-      trimmed.startsWith('/') ||
-      trimmed.startsWith('~') ||
-      trimmed.startsWith('file:') ||
+      trimmed.startsWith("/") ||
+      trimmed.startsWith("~") ||
+      trimmed.startsWith("file:") ||
       /^[A-Za-z]:[\\/]/.test(trimmed)
     ) {
       return trimmed;
     }
     return undefined;
   } catch (err) {
-    ctx.log.debug('kiro: failed to decode workspace folder', folderName, err);
+    ctx.log.debug("kiro: failed to decode workspace folder", folderName, err);
     return undefined;
   }
 }
@@ -165,7 +195,10 @@ function parseSessionIndex(data: unknown): JsonRecord[] {
   return [];
 }
 
-async function readSessionIndex(ctx: AgentChatParserContext, indexPath: string): Promise<JsonRecord[]> {
+async function readSessionIndex(
+  ctx: AgentChatParserContext,
+  indexPath: string,
+): Promise<JsonRecord[]> {
   if (!fs.existsSync(indexPath)) return [];
   return parseSessionIndex(await readJsonFile(ctx, indexPath));
 }
@@ -177,16 +210,16 @@ async function discoverSessionRefs(ctx: AgentChatParserContext): Promise<KiroSes
     for (const workspaceDir of listSubdirectories(ctx, baseDir)) {
       const workspacePath = decodeWorkspaceFolderName(ctx, path.basename(workspaceDir));
       const indexedSessionPaths = new Set<string>();
-      const indexPath = path.join(workspaceDir, 'sessions.json');
+      const indexPath = path.join(workspaceDir, "sessions.json");
 
       for (const entry of await readSessionIndex(ctx, indexPath)) {
-        const sessionId = getString(entry, ['sessionId', 'id', 'conversationId']);
+        const sessionId = getString(entry, ["sessionId", "id", "conversationId"]);
         if (!sessionId) continue;
 
         const sessionPath = path.join(workspaceDir, `${sessionId}.json`);
         indexedSessionPaths.add(path.resolve(sessionPath));
         refs.push({
-          surface: 'ide-workspace',
+          surface: "ide-workspace",
           workspaceDir,
           workspacePath,
           sessionPath,
@@ -196,13 +229,13 @@ async function discoverSessionRefs(ctx: AgentChatParserContext): Promise<KiroSes
       }
 
       const looseSessionFiles = findFiles(ctx, workspaceDir, {
-        match: (entry) => entry.name.endsWith('.json') && entry.name !== 'sessions.json',
+        match: (entry) => entry.name.endsWith(".json") && entry.name !== "sessions.json",
         recursive: false,
       });
 
       for (const sessionPath of looseSessionFiles) {
         if (indexedSessionPaths.has(path.resolve(sessionPath))) continue;
-        refs.push({ surface: 'ide-workspace', workspaceDir, workspacePath, sessionPath });
+        refs.push({ surface: "ide-workspace", workspaceDir, workspacePath, sessionPath });
       }
     }
   }
@@ -210,15 +243,15 @@ async function discoverSessionRefs(ctx: AgentChatParserContext): Promise<KiroSes
   const acpDir = getKiroAcpSessionDir();
   if (fs.existsSync(acpDir)) {
     const metadataFiles = findFiles(ctx, acpDir, {
-      match: (entry) => entry.name.endsWith('.json'),
+      match: (entry) => entry.name.endsWith(".json"),
       recursive: false,
     });
     const metadataPaths = new Set(metadataFiles.map((filePath) => path.resolve(filePath)));
 
     for (const sessionPath of metadataFiles) {
-      const eventPath = getSiblingPath(sessionPath, '.jsonl');
+      const eventPath = getSiblingPath(sessionPath, ".jsonl");
       refs.push({
-        surface: 'acp-jsonl',
+        surface: "acp-jsonl",
         workspaceDir: acpDir,
         sessionPath,
         eventPath: fs.existsSync(eventPath) ? eventPath : undefined,
@@ -226,14 +259,14 @@ async function discoverSessionRefs(ctx: AgentChatParserContext): Promise<KiroSes
     }
 
     const eventFiles = findFiles(ctx, acpDir, {
-      match: (entry) => entry.name.endsWith('.jsonl'),
+      match: (entry) => entry.name.endsWith(".jsonl"),
       recursive: false,
     });
     for (const eventPath of eventFiles) {
-      const metadataPath = getSiblingPath(eventPath, '.json');
+      const metadataPath = getSiblingPath(eventPath, ".json");
       if (metadataPaths.has(path.resolve(metadataPath))) continue;
       refs.push({
-        surface: 'acp-jsonl',
+        surface: "acp-jsonl",
         workspaceDir: acpDir,
         sessionPath: eventPath,
         eventPath,
@@ -251,40 +284,40 @@ function getHistoryEntries(sessionData: JsonRecord | undefined): unknown[] {
   return [];
 }
 
-function normalizeRole(role: unknown): MessageDraft['role'] | undefined {
-  if (role === 'user' || role === 'human') return 'user';
-  if (role === 'assistant' || role === 'ai') return 'assistant';
+function normalizeRole(role: unknown): MessageDraft["role"] | undefined {
+  if (role === "user" || role === "human") return "user";
+  if (role === "assistant" || role === "ai") return "assistant";
   return undefined;
 }
 
 function extractBlockText(block: unknown): string {
-  if (!isRecord(block)) return '';
+  if (!isRecord(block)) return "";
 
-  const type = typeof block.type === 'string' ? block.type : undefined;
-  const kind = typeof block.kind === 'string' ? block.kind : undefined;
+  const type = typeof block.type === "string" ? block.type : undefined;
+  const kind = typeof block.kind === "string" ? block.kind : undefined;
   const hasBlockKind = type !== undefined || kind !== undefined;
-  if (hasBlockKind && type !== 'text' && kind !== 'text') return '';
+  if (hasBlockKind && type !== "text" && kind !== "text") return "";
 
-  if (typeof block.text === 'string') return block.text;
-  if (typeof block.data === 'string') return block.data;
-  return '';
+  if (typeof block.text === "string") return block.text;
+  if (typeof block.data === "string") return block.data;
+  return "";
 }
 
 function extractContent(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) return content.map(extractBlockText).filter(Boolean).join('\n');
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map(extractBlockText).filter(Boolean).join("\n");
   if (isRecord(content)) {
     const blockText = extractBlockText(content);
     if (blockText) return blockText;
 
-    for (const key of ['content', 'text', 'data', 'message', 'delta', 'chunk']) {
+    for (const key of ["content", "text", "data", "message", "delta", "chunk"]) {
       const nested: unknown = content[key];
       if (nested === content) continue;
       const nestedText = extractContent(nested);
       if (nestedText) return nestedText;
     }
   }
-  return '';
+  return "";
 }
 
 function normalizeHistoryEntry(entry: unknown): MessageDraft | undefined {
@@ -300,7 +333,8 @@ function normalizeHistoryEntry(entry: unknown): MessageDraft | undefined {
     role,
     content,
     timestamp:
-      getDate(message, ['timestamp', 'createdAt', 'dateCreated']) ?? getDate(entry, ['timestamp', 'createdAt']),
+      getDate(message, ["timestamp", "createdAt", "dateCreated"]) ??
+      getDate(entry, ["timestamp", "createdAt"]),
   };
 }
 
@@ -311,17 +345,20 @@ function extractMessages(sessionData: JsonRecord | undefined): MessageDraft[] {
   });
 }
 
-async function readAcpEvents(ctx: AgentChatParserContext, eventPath: string | undefined): Promise<unknown[]> {
+async function readAcpEvents(
+  ctx: AgentChatParserContext,
+  eventPath: string | undefined,
+): Promise<unknown[]> {
   if (!eventPath || !fs.existsSync(eventPath)) return [];
   return readJsonlFile(ctx, eventPath);
 }
 
 function getAcpUpdate(record: JsonRecord): JsonRecord | undefined {
-  const params = getRecord(record, ['params']);
-  const update = getRecord(params, ['update']);
+  const params = getRecord(record, ["params"]);
+  const update = getRecord(params, ["update"]);
   if (update) return update;
 
-  const nested = getRecord(record, ['update', 'event']);
+  const nested = getRecord(record, ["update", "event"]);
   if (nested) return nested;
 
   return getAcpRecordType(record) ? record : undefined;
@@ -332,24 +369,24 @@ function getAcpRecordType(record: JsonRecord | undefined): string | undefined {
 }
 
 function extractAcpRecordText(record: JsonRecord | undefined): string {
-  if (!record) return '';
-  for (const key of ['content', 'text', 'message', 'delta', 'chunk', 'data']) {
+  if (!record) return "";
+  for (const key of ["content", "text", "message", "delta", "chunk", "data"]) {
     if (!(key in record)) continue;
     const text = extractContent(record[key]);
-    if (text.length > 0 || typeof record[key] === 'string') return text;
+    if (text.length > 0 || typeof record[key] === "string") return text;
   }
-  return '';
+  return "";
 }
 
 function extractPromptText(record: JsonRecord): string {
-  const params = getRecord(record, ['params']);
+  const params = getRecord(record, ["params"]);
   return extractAcpRecordText(params).trim();
 }
 
 function extractAcpTimestamp(record: JsonRecord, fallback?: JsonRecord): Date | undefined {
   return (
-    getDate(record, ['timestamp', 'createdAt', 'dateCreated', 'time']) ??
-    getDate(fallback, ['timestamp', 'createdAt', 'dateCreated', 'time'])
+    getDate(record, ["timestamp", "createdAt", "dateCreated", "time"]) ??
+    getDate(fallback, ["timestamp", "createdAt", "dateCreated", "time"])
   );
 }
 
@@ -358,26 +395,31 @@ function extractAcpTimestamp(record: JsonRecord, fallback?: JsonRecord): Date | 
 // not raw ACP `session/update` notifications (see kirodotdev/Kiro#6110). We
 // peel the envelope so the same parser handles both wire-protocol replay logs
 // and Kiro's persisted record format.
-const KIRO_PERSISTED_ENVELOPE_KEYS = ['AssistantMessage', 'UserMessage', 'assistantMessage', 'userMessage'] as const;
+const KIRO_PERSISTED_ENVELOPE_KEYS = [
+  "AssistantMessage",
+  "UserMessage",
+  "assistantMessage",
+  "userMessage",
+] as const;
 
 function unwrapKiroPersistedEnvelope(
   event: JsonRecord,
-): { kind: 'assistant' | 'user'; payload: JsonRecord } | undefined {
+): { kind: "assistant" | "user"; payload: JsonRecord } | undefined {
   for (const key of KIRO_PERSISTED_ENVELOPE_KEYS) {
     const value = event[key];
     if (!isRecord(value)) continue;
     const lowered = key.toLowerCase();
-    if (lowered === 'assistantmessage') return { kind: 'assistant', payload: value };
-    if (lowered === 'usermessage') return { kind: 'user', payload: value };
+    if (lowered === "assistantmessage") return { kind: "assistant", payload: value };
+    if (lowered === "usermessage") return { kind: "user", payload: value };
   }
   return undefined;
 }
 
 function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
   const messages: MessageDraft[] = [];
-  let pendingAssistant = '';
+  let pendingAssistant = "";
   let pendingAssistantTimestamp: Date | undefined;
-  let pendingUser = '';
+  let pendingUser = "";
   let pendingUserTimestamp: Date | undefined;
   // Track JSON-RPC `session/prompt` request ids so we can flush on the
   // matching response (`stopReason` carries model stop reasons such as `end_turn` or `cancelled`).
@@ -385,24 +427,24 @@ function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
 
   const flushAssistant = (): void => {
     const content = pendingAssistant;
-    pendingAssistant = '';
+    pendingAssistant = "";
     const timestamp = pendingAssistantTimestamp;
     pendingAssistantTimestamp = undefined;
     if (content.trim().length === 0) return;
-    messages.push({ role: 'assistant', content: content.trim(), timestamp });
+    messages.push({ role: "assistant", content: content.trim(), timestamp });
   };
 
   const flushUser = (): void => {
     const content = pendingUser;
-    pendingUser = '';
+    pendingUser = "";
     const timestamp = pendingUserTimestamp;
     pendingUserTimestamp = undefined;
     if (content.trim().length === 0) return;
-    messages.push({ role: 'user', content: content.trim(), timestamp });
+    messages.push({ role: "user", content: content.trim(), timestamp });
   };
 
   const isPromptResponse = (event: JsonRecord): boolean => {
-    if (typeof event.method === 'string') return false;
+    if (typeof event.method === "string") return false;
     const id = event.id;
     if (id === undefined || id === null) return false;
     const idKey = String(id);
@@ -417,13 +459,13 @@ function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
     // Kiro CLI persisted-format envelopes (`AssistantMessage`/`UserMessage`).
     const persisted = unwrapKiroPersistedEnvelope(event);
     if (persisted) {
-      if (persisted.kind === 'user') {
+      if (persisted.kind === "user") {
         flushAssistant();
         flushUser();
         const content = extractAcpRecordText(persisted.payload).trim();
         if (content) {
           messages.push({
-            role: 'user',
+            role: "user",
             content,
             timestamp: extractAcpTimestamp(persisted.payload, event),
           });
@@ -436,7 +478,7 @@ function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
       const content = extractAcpRecordText(persisted.payload).trim();
       if (content) {
         messages.push({
-          role: 'assistant',
+          role: "assistant",
           content,
           timestamp: extractAcpTimestamp(persisted.payload, event),
         });
@@ -444,8 +486,8 @@ function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
       continue;
     }
 
-    const method = getString(event, ['method']);
-    if (method === 'session/prompt') {
+    const method = getString(event, ["method"]);
+    if (method === "session/prompt") {
       flushAssistant();
       flushUser();
       const id = event.id;
@@ -453,9 +495,9 @@ function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
       const content = extractPromptText(event);
       if (content) {
         messages.push({
-          role: 'user',
+          role: "user",
           content,
-          timestamp: extractAcpTimestamp(event, getRecord(event, ['params'])),
+          timestamp: extractAcpTimestamp(event, getRecord(event, ["params"])),
         });
       }
       continue;
@@ -472,7 +514,7 @@ function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
     if (!update) {
       const directMessage = normalizeHistoryEntry(event);
       if (directMessage) {
-        if (directMessage.role === 'user') {
+        if (directMessage.role === "user") {
           flushAssistant();
           flushUser();
         }
@@ -516,7 +558,7 @@ function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
       const content = extractAcpRecordText(update).trim();
       if (content) {
         messages.push({
-          role: 'assistant',
+          role: "assistant",
           content,
           timestamp: extractAcpTimestamp(update, event),
         });
@@ -530,7 +572,7 @@ function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
       const content = extractAcpRecordText(update).trim();
       if (content) {
         messages.push({
-          role: 'user',
+          role: "user",
           content,
           timestamp: extractAcpTimestamp(update, event),
         });
@@ -546,7 +588,7 @@ function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
 
     const directMessage = normalizeHistoryEntry(update);
     if (directMessage) {
-      if (directMessage.role === 'user') {
+      if (directMessage.role === "user") {
         flushAssistant();
         flushUser();
       }
@@ -560,64 +602,84 @@ function extractAcpMessages(events: readonly unknown[]): MessageDraft[] {
 }
 
 function extractAcpCwd(sessionData: JsonRecord | undefined, events: readonly unknown[]): string {
-  const metadataCwd = getString(sessionData, ['workspacePath', 'workspace', 'cwd', 'workingDirectory', 'directory']);
+  const metadataCwd = getString(sessionData, [
+    "workspacePath",
+    "workspace",
+    "cwd",
+    "workingDirectory",
+    "directory",
+  ]);
   if (metadataCwd) return metadataCwd;
 
   for (const event of events) {
     if (!isRecord(event)) continue;
-    if (getString(event, ['method']) !== 'session/new') continue;
+    if (getString(event, ["method"]) !== "session/new") continue;
 
-    const cwd = getString(getRecord(event, ['params']), ['cwd', 'workspacePath', 'workingDirectory', 'directory']);
+    const cwd = getString(getRecord(event, ["params"]), [
+      "cwd",
+      "workspacePath",
+      "workingDirectory",
+      "directory",
+    ]);
     if (cwd) return cwd;
   }
 
-  return '';
+  return "";
 }
 
-function extractAcpModel(sessionData: JsonRecord | undefined, events: readonly unknown[]): string | undefined {
+function extractAcpModel(
+  sessionData: JsonRecord | undefined,
+  events: readonly unknown[],
+): string | undefined {
   // Kiro v1.29.0 added `models.currentModelId` in `session/new`; honour it after metadata.
-  const metadataModel = getString(sessionData, ['selectedModel', 'model', 'modelId']);
+  const metadataModel = getString(sessionData, ["selectedModel", "model", "modelId"]);
   if (metadataModel) return metadataModel;
-  const modelsBlock = getRecord(sessionData, ['models']);
-  const currentMetadataModel = getString(modelsBlock, ['currentModelId', 'modelId']);
+  const modelsBlock = getRecord(sessionData, ["models"]);
+  const currentMetadataModel = getString(modelsBlock, ["currentModelId", "modelId"]);
   if (currentMetadataModel) return currentMetadataModel;
 
   for (const event of events) {
     if (!isRecord(event)) continue;
 
-    const params = getRecord(event, ['params']);
-    const model = getString(params, ['model', 'modelId', 'selectedModel']);
+    const params = getRecord(event, ["params"]);
+    const model = getString(params, ["model", "modelId", "selectedModel"]);
     if (model) return model;
 
     // Inspect `session/new` and `session/load` responses (`{result: {models: {...}}}`).
-    const result = getRecord(event, ['result']);
-    const resultModels = getRecord(result, ['models']);
-    const fromResult = getString(resultModels, ['currentModelId', 'modelId']);
+    const result = getRecord(event, ["result"]);
+    const resultModels = getRecord(result, ["models"]);
+    const fromResult = getString(resultModels, ["currentModelId", "modelId"]);
     if (fromResult) return fromResult;
   }
 
   return undefined;
 }
 
-function getSessionId(ref: KiroSessionRef, sessionData: JsonRecord | undefined): string | undefined {
+function getSessionId(
+  ref: KiroSessionRef,
+  sessionData: JsonRecord | undefined,
+): string | undefined {
   return (
-    getString(ref.indexEntry, ['sessionId', 'id', 'conversationId']) ??
-    getString(sessionData, ['sessionId', 'id', 'conversationId']) ??
+    getString(ref.indexEntry, ["sessionId", "id", "conversationId"]) ??
+    getString(sessionData, ["sessionId", "id", "conversationId"]) ??
     path.basename(ref.sessionPath, path.extname(ref.sessionPath))
   );
 }
 
 function getWorkspacePath(ref: KiroSessionRef, sessionData: JsonRecord | undefined): string {
   return (
-    getString(sessionData, ['workspacePath', 'workspace', 'cwd', 'directory']) ??
-    getString(ref.indexEntry, ['workspacePath', 'workspace', 'cwd', 'directory']) ??
+    getString(sessionData, ["workspacePath", "workspace", "cwd", "directory"]) ??
+    getString(ref.indexEntry, ["workspacePath", "workspace", "cwd", "directory"]) ??
     ref.workspacePath ??
-    ''
+    ""
   );
 }
 
 function getModel(ref: KiroSessionRef, sessionData: JsonRecord | undefined): string | undefined {
-  return getString(sessionData, ['selectedModel', 'model']) ?? getString(ref.indexEntry, ['selectedModel', 'model']);
+  return (
+    getString(sessionData, ["selectedModel", "model"]) ??
+    getString(ref.indexEntry, ["selectedModel", "model"])
+  );
 }
 
 async function statSessionRef(
@@ -625,11 +687,13 @@ async function statSessionRef(
   ref: KiroSessionRef,
 ): Promise<KiroStatInfo | undefined> {
   try {
-    if (ref.surface === 'acp-jsonl') {
-      const candidatePaths = [ref.sessionPath, ref.eventPath].filter((filePath): filePath is string => {
-        if (!filePath) return false;
-        return fs.existsSync(filePath);
-      });
+    if (ref.surface === "acp-jsonl") {
+      const candidatePaths = [ref.sessionPath, ref.eventPath].filter(
+        (filePath): filePath is string => {
+          if (!filePath) return false;
+          return fs.existsSync(filePath);
+        },
+      );
       // De-dupe so lone-jsonl refs (where sessionPath === eventPath) do not double-count bytes.
       const paths = Array.from(new Set(candidatePaths.map((filePath) => path.resolve(filePath))));
       if (paths.length === 0) return undefined;
@@ -650,7 +714,7 @@ async function statSessionRef(
       return { stats: await fsp.stat(ref.indexPath), originalPath: ref.indexPath };
     }
   } catch (err) {
-    ctx.log.debug('kiro: failed to stat session ref', ref.sessionPath, err);
+    ctx.log.debug("kiro: failed to stat session ref", ref.sessionPath, err);
   }
   return undefined;
 }
@@ -660,8 +724,10 @@ async function parseAcpSessionRef(
   ref: KiroSessionRef,
   options: SessionParseOptions,
 ): Promise<UnifiedSession | null> {
-  const sessionData = ref.sessionPath.endsWith('.json') ? await readJsonFile(ctx, ref.sessionPath) : undefined;
-  if (ref.sessionPath.endsWith('.json') && sessionData === undefined) return null;
+  const sessionData = ref.sessionPath.endsWith(".json")
+    ? await readJsonFile(ctx, ref.sessionPath)
+    : undefined;
+  if (ref.sessionPath.endsWith(".json") && sessionData === undefined) return null;
 
   const sessionRecord = isRecord(sessionData) ? sessionData : undefined;
   const events = await readAcpEvents(ctx, ref.eventPath);
@@ -675,17 +741,22 @@ async function parseAcpSessionRef(
   if (options.cwd && cwd && !matchesCwd(cwd, options.cwd)) return null;
 
   const createdAt =
-    getDate(sessionRecord, ['dateCreated', 'createdAt', 'creationDate']) ??
-    getDate(getRecord(sessionRecord, ['metadata']), ['dateCreated', 'createdAt', 'creationDate']) ??
+    getDate(sessionRecord, ["dateCreated", "createdAt", "creationDate"]) ??
+    getDate(getRecord(sessionRecord, ["metadata"]), ["dateCreated", "createdAt", "creationDate"]) ??
     statInfo.stats.birthtime;
   const updatedAt =
-    getDate(sessionRecord, ['dateUpdated', 'updatedAt', 'lastUpdatedAt', 'lastMessageDate']) ??
-    getDate(getRecord(sessionRecord, ['metadata']), ['dateUpdated', 'updatedAt', 'lastUpdatedAt', 'lastMessageDate']) ??
+    getDate(sessionRecord, ["dateUpdated", "updatedAt", "lastUpdatedAt", "lastMessageDate"]) ??
+    getDate(getRecord(sessionRecord, ["metadata"]), [
+      "dateUpdated",
+      "updatedAt",
+      "lastUpdatedAt",
+      "lastMessageDate",
+    ]) ??
     statInfo.stats.mtime;
 
   return {
     id: sessionId,
-    source: 'kiro',
+    source: "kiro",
     cwd,
     repo: extractRepoFromCwd(cwd) || undefined,
     createdAt,
@@ -700,7 +771,7 @@ async function parseSessionRef(
   ref: KiroSessionRef,
   options: SessionParseOptions,
 ): Promise<UnifiedSession | null> {
-  if (ref.surface === 'acp-jsonl') return parseAcpSessionRef(ctx, ref, options);
+  if (ref.surface === "acp-jsonl") return parseAcpSessionRef(ctx, ref, options);
 
   const sessionFileExists = fs.existsSync(ref.sessionPath);
   const sessionData = sessionFileExists ? await readJsonFile(ctx, ref.sessionPath) : undefined;
@@ -717,19 +788,19 @@ async function parseSessionRef(
   if (options.cwd && cwd && !matchesCwd(cwd, options.cwd)) return null;
 
   const createdAt =
-    getDate(ref.indexEntry, ['dateCreated', 'createdAt', 'creationDate']) ??
-    getDate(sessionRecord, ['dateCreated', 'createdAt', 'creationDate']) ??
+    getDate(ref.indexEntry, ["dateCreated", "createdAt", "creationDate"]) ??
+    getDate(sessionRecord, ["dateCreated", "createdAt", "creationDate"]) ??
     statInfo.stats.birthtime;
   const updatedAt =
-    getDate(sessionRecord, ['dateUpdated', 'updatedAt', 'lastUpdatedAt', 'lastMessageDate']) ??
-    getDate(ref.indexEntry, ['dateUpdated', 'updatedAt', 'lastUpdatedAt', 'lastMessageDate']) ??
+    getDate(sessionRecord, ["dateUpdated", "updatedAt", "lastUpdatedAt", "lastMessageDate"]) ??
+    getDate(ref.indexEntry, ["dateUpdated", "updatedAt", "lastUpdatedAt", "lastMessageDate"]) ??
     statInfo.stats.mtime;
 
   const model = getModel(ref, sessionRecord);
 
   return {
     id: sessionId,
-    source: 'kiro',
+    source: "kiro",
     cwd,
     repo: extractRepoFromCwd(cwd) || undefined,
     createdAt,
@@ -751,7 +822,7 @@ export async function parseKiroSessions(
     try {
       return await parseSessionRef(ctx, ref, options);
     } catch (err) {
-      ctx.log.debug('kiro: skipping unparseable session', ref.sessionPath, err);
+      ctx.log.debug("kiro: skipping unparseable session", ref.sessionPath, err);
       return null;
     }
   });
@@ -765,7 +836,9 @@ export async function parseKiroSessions(
     }
   }
 
-  const sorted = Array.from(sessionsById.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  const sorted = Array.from(sessionsById.values()).sort(
+    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+  );
   return options.limit ? sorted.slice(0, options.limit) : sorted;
 }
 
@@ -774,32 +847,37 @@ async function readSiblingIndexEntry(
   session: UnifiedSession,
 ): Promise<JsonRecord | undefined> {
   const indexPath =
-    path.basename(session.originalPath) === 'sessions.json'
+    path.basename(session.originalPath) === "sessions.json"
       ? session.originalPath
-      : path.join(path.dirname(session.originalPath), 'sessions.json');
+      : path.join(path.dirname(session.originalPath), "sessions.json");
 
   const entries = await readSessionIndex(ctx, indexPath);
-  return entries.find((entry) => getString(entry, ['sessionId', 'id', 'conversationId']) === session.id);
+  return entries.find(
+    (entry) => getString(entry, ["sessionId", "id", "conversationId"]) === session.id,
+  );
 }
 
 function resolveContextSessionPath(session: UnifiedSession): string {
-  if (path.basename(session.originalPath) === 'sessions.json') {
+  if (path.basename(session.originalPath) === "sessions.json") {
     return path.join(path.dirname(session.originalPath), `${session.id}.json`);
   }
   return session.originalPath;
 }
 
-function resolveAcpContextPaths(session: UnifiedSession): { metadataPath?: string; eventPath?: string } {
-  if (session.originalPath.endsWith('.jsonl')) {
-    const metadataPath = getSiblingPath(session.originalPath, '.json');
+function resolveAcpContextPaths(session: UnifiedSession): {
+  metadataPath?: string;
+  eventPath?: string;
+} {
+  if (session.originalPath.endsWith(".jsonl")) {
+    const metadataPath = getSiblingPath(session.originalPath, ".json");
     return {
       metadataPath: fs.existsSync(metadataPath) ? metadataPath : undefined,
       eventPath: session.originalPath,
     };
   }
 
-  if (session.originalPath.endsWith('.json')) {
-    const eventPath = getSiblingPath(session.originalPath, '.jsonl');
+  if (session.originalPath.endsWith(".json")) {
+    const eventPath = getSiblingPath(session.originalPath, ".jsonl");
     return {
       metadataPath: session.originalPath,
       eventPath: fs.existsSync(eventPath) ? eventPath : undefined,
@@ -818,7 +896,9 @@ export async function extractKiroContext(
 ): Promise<ParsedAgentConversation> {
   if (isKiroAcpSessionPath(session.originalPath)) {
     const paths = resolveAcpContextPaths(session);
-    const sessionData = paths.metadataPath ? await readJsonFile(ctx, paths.metadataPath) : undefined;
+    const sessionData = paths.metadataPath
+      ? await readJsonFile(ctx, paths.metadataPath)
+      : undefined;
     const sessionRecord = isRecord(sessionData) ? sessionData : undefined;
     const events = await readAcpEvents(ctx, paths.eventPath);
     const eventMessages = extractAcpMessages(events);
@@ -844,7 +924,7 @@ export async function extractKiroContext(
   const indexEntry = await readSiblingIndexEntry(ctx, session);
   const workspacePath = getWorkspacePath(
     {
-      surface: 'ide-workspace',
+      surface: "ide-workspace",
       workspaceDir: path.dirname(sessionPath),
       workspacePath: decodeWorkspaceFolderName(ctx, path.basename(path.dirname(sessionPath))),
       sessionPath,
@@ -853,7 +933,7 @@ export async function extractKiroContext(
     sessionRecord,
   );
   const model = getModel(
-    { surface: 'ide-workspace', workspaceDir: path.dirname(sessionPath), sessionPath, indexEntry },
+    { surface: "ide-workspace", workspaceDir: path.dirname(sessionPath), sessionPath, indexEntry },
     sessionRecord,
   );
   const messages = extractMessages(sessionRecord);

@@ -1,14 +1,6 @@
 import { join } from "node:path";
 import { adapters, installGlobalHooks, type Name } from "@buildsip/hooks";
-import {
-  cancel,
-  confirm,
-  intro,
-  isCancel,
-  multiselect,
-  outro,
-  spinner,
-} from "@clack/prompts";
+import { cancel, confirm, intro, isCancel, multiselect, outro, spinner } from "@clack/prompts";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { installSkill } from "../install-skill";
@@ -63,9 +55,7 @@ export function registerInitCommand(program: Command) {
         const installMode = process.env.BUILDSIP_INSTALL_MODE ?? "registry";
 
         if (installMode !== "registry" && installMode !== "link") {
-          throw new Error(
-            'BUILDSIP_INSTALL_MODE must be "registry" or "link".',
-          );
+          throw new Error('BUILDSIP_INSTALL_MODE must be "registry" or "link".');
         }
 
         if (installMode === "link") {
@@ -75,16 +65,12 @@ export function registerInitCommand(program: Command) {
             cwd: packageRoot,
             verbose: options.verbose,
           });
-          progress.message(
-            `Linking local ${pc.greenBright("buildsip")} CLI globally.`,
-          );
+          progress.message(`Linking local ${pc.greenBright("buildsip")} CLI globally.`);
           await runCommand("pnpm", ["add", "-g", "."], {
             cwd: packageRoot,
             verbose: options.verbose,
           });
-          progress.stop(
-            `Installed the local ${pc.greenBright("buildsip")} CLI.`,
-          );
+          progress.stop(`Installed the local ${pc.greenBright("buildsip")} CLI.`);
         } else {
           progress.start(`Installing ${pc.greenBright("buildsip")} CLI.`);
           await runCommand("npm", ["i", "-g", "buildsip@latest"], {
@@ -97,21 +83,15 @@ export function registerInitCommand(program: Command) {
         await installGlobalHooks(names);
         progress.stop("Installed 2 global hooks.");
 
-        progress.start(
-          `Installing the ${pc.greenBright("/buildsip-story")} global skill.`,
-        );
+        progress.start(`Installing the ${pc.greenBright("/buildsip-story")} global skill.`);
         await installSkill({
           names,
           source:
-            installMode === "link"
-              ? join(findPackageRoot(), "..", "skills")
-              : "buildsip/skills",
+            installMode === "link" ? join(findPackageRoot(), "..", "skills") : "buildsip/skills",
           verbose: options.verbose,
         });
 
-        progress.stop(
-          `Installed the ${pc.greenBright("/buildsip-story")} global skill.`,
-        );
+        progress.stop(`Installed the ${pc.greenBright("/buildsip-story")} global skill.`);
 
         const shouldLogin = await confirm({
           message: "Sign in to Buildsip?",
@@ -126,9 +106,7 @@ export function registerInitCommand(program: Command) {
         if (shouldLogin) {
           progress.start("Logging in to BuildSip.");
           const { email } = await login({ progress });
-          progress.stop(
-            email ? `Signed in as ${pc.bold(email)}.` : "Signed in.",
-          );
+          progress.stop(email ? `Signed in as ${pc.bold(email)}.` : "Signed in.");
         }
 
         outro(
@@ -137,9 +115,7 @@ export function registerInitCommand(program: Command) {
       } catch (error) {
         log.debug(error);
         progress.stop();
-        cancel(
-          error instanceof Error ? error.message : "BuildSip init failed.",
-        );
+        cancel(error instanceof Error ? error.message : "BuildSip init failed.");
         process.exitCode = 1;
       }
     });

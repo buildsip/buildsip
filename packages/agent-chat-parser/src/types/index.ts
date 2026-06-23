@@ -3,11 +3,11 @@
  */
 
 // Import SessionSource locally (used by UnifiedSession below) and re-export
-import type { SessionSource } from './tool-names';
+import type { SessionSource } from "./tool-names";
 
 // Re-export shared content block types
-export type { ContentBlock, TextBlock } from './content-blocks';
-export { isSessionSource, type SessionSource, TOOL_NAMES } from './tool-names';
+export type { ContentBlock, TextBlock } from "./content-blocks";
+export { isSessionSource, type SessionSource, TOOL_NAMES } from "./tool-names";
 
 export type AgentChatParserContext = {
   log: {
@@ -54,7 +54,7 @@ export interface SessionParseOptions {
 export interface Message {
   /** Chronological position within the parsed conversation. */
   sequence: number;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   timestamp?: Date;
   /** Source-tool message identifier, when available */

@@ -1,20 +1,29 @@
-import { createHash } from 'node:crypto';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { StringDecoder } from 'node:string_decoder';
-import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
-import type { KimiMessage } from '../types/schemas';
-import { extractTextFromBlocks } from '../utils/content';
-import { extractRepoFromCwd, homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { StringDecoder } from "node:string_decoder";
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  UnifiedSession,
+} from "../types/index";
+import type { KimiMessage } from "../types/schemas";
+import { extractTextFromBlocks } from "../utils/content";
+import {
+  extractRepoFromCwd,
+  homeDir,
+  type MessageDraft,
+  sequenceMessages,
+} from "../utils/parser-helpers";
 
 function getKimiShareDir(): string {
   const configured = process.env.KIMI_SHARE_DIR?.trim();
-  return configured ? path.resolve(configured) : path.join(homeDir(), '.kimi');
+  return configured ? path.resolve(configured) : path.join(homeDir(), ".kimi");
 }
 
 const KIMI_SHARE_DIR = getKimiShareDir();
-const KIMI_SESSIONS_DIR = path.join(KIMI_SHARE_DIR, 'sessions');
-const KIMI_CONFIG_PATH = path.join(KIMI_SHARE_DIR, 'kimi.json');
+const KIMI_SESSIONS_DIR = path.join(KIMI_SHARE_DIR, "sessions");
+const KIMI_CONFIG_PATH = path.join(KIMI_SHARE_DIR, "kimi.json");
 
 type KimiWorkDirEntry = { path: string; kaos?: string };
 type KimiSessionMetadata = {
@@ -37,22 +46,22 @@ type KimiContextReadResult = {
 type KimiContentBlock = Record<string, unknown> & { type: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringField(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function numberField(record: Record<string, unknown>, key: string): number | null | undefined {
   const value = record[key];
   if (value === null) return null;
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function hashWorkDirPath(workDirPath: string): string {
-  return createHash('md5').update(workDirPath, 'utf8').digest('hex');
+  return createHash("md5").update(workDirPath, "utf8").digest("hex");
 }
 
 async function readJsonObject(
@@ -61,10 +70,10 @@ async function readJsonObject(
 ): Promise<Record<string, unknown> | undefined> {
   try {
     if (!fs.existsSync(filePath)) return undefined;
-    const parsed: unknown = JSON.parse(await fs.promises.readFile(filePath, 'utf8'));
+    const parsed: unknown = JSON.parse(await fs.promises.readFile(filePath, "utf8"));
     return isRecord(parsed) ? parsed : undefined;
   } catch (err) {
-    ctx.log.debug('kimi: failed to parse json file', filePath, err);
+    ctx.log.debug("kimi: failed to parse json file", filePath, err);
     return undefined;
   }
 }
@@ -77,18 +86,21 @@ async function parseKimiWorkDirs(ctx: AgentChatParserContext): Promise<KimiWorkD
 
     return workDirs
       .map((item) => {
-        if (typeof item === 'string') return { path: item };
-        if (!item || typeof item !== 'object') return null;
+        if (typeof item === "string") return { path: item };
+        if (!item || typeof item !== "object") return null;
         const candidate = item as { path?: unknown; kaos?: unknown };
-        if (typeof candidate.path !== 'string' || candidate.path.length === 0) return null;
+        if (typeof candidate.path !== "string" || candidate.path.length === 0) return null;
         return {
           path: candidate.path,
-          kaos: typeof candidate.kaos === 'string' && candidate.kaos.length > 0 ? candidate.kaos : undefined,
+          kaos:
+            typeof candidate.kaos === "string" && candidate.kaos.length > 0
+              ? candidate.kaos
+              : undefined,
         };
       })
       .filter((entry): entry is KimiWorkDirEntry => entry !== null);
   } catch (err) {
-    ctx.log.debug('kimi: failed to parse kimi.json work_dirs', err);
+    ctx.log.debug("kimi: failed to parse kimi.json work_dirs", err);
     return [];
   }
 }
@@ -101,7 +113,7 @@ function buildWorkDirHashIndex(workDirs: KimiWorkDirEntry[]): Map<string, string
     const keys = [md5];
 
     // Kimi can prefix non-local KAOS sessions as "{kaos}_{md5}".
-    if (wd.kaos && wd.kaos.toLowerCase() !== 'local') {
+    if (wd.kaos && wd.kaos.toLowerCase() !== "local") {
       keys.push(`${wd.kaos}_${md5}`);
     }
 
@@ -117,16 +129,16 @@ function buildWorkDirHashIndex(workDirs: KimiWorkDirEntry[]): Map<string, string
 
 function resolveCwdFromSessionDir(sessionDir: string, hashIndex: Map<string, string>): string {
   const workDirHash = path.basename(path.dirname(sessionDir));
-  return hashIndex.get(workDirHash) || '';
+  return hashIndex.get(workDirHash) || "";
 }
 
 function resolveContextPath(sessionPath: string): string {
-  return sessionPath.endsWith('.jsonl') ? sessionPath : path.join(sessionPath, 'context.jsonl');
+  return sessionPath.endsWith(".jsonl") ? sessionPath : path.join(sessionPath, "context.jsonl");
 }
 
 function deriveSessionId(sessionPath: string): string {
-  if (sessionPath.endsWith('.jsonl')) {
-    return path.basename(sessionPath, '.jsonl');
+  if (sessionPath.endsWith(".jsonl")) {
+    return path.basename(sessionPath, ".jsonl");
   }
   return path.basename(sessionPath);
 }
@@ -140,7 +152,10 @@ async function getSessionMetadataDir(sessionPath: string): Promise<string | unde
   }
 }
 
-async function listSubdirectoriesAsync(ctx: AgentChatParserContext, dir: string): Promise<string[]> {
+async function listSubdirectoriesAsync(
+  ctx: AgentChatParserContext,
+  dir: string,
+): Promise<string[]> {
   try {
     const entries = await fs.promises.readdir(dir, { withFileTypes: true });
     const subdirs: string[] = [];
@@ -159,7 +174,7 @@ async function listSubdirectoriesAsync(ctx: AgentChatParserContext, dir: string)
     }
     return subdirs;
   } catch (err) {
-    ctx.log.debug('kimi: cannot list subdirectories of', dir, err);
+    ctx.log.debug("kimi: cannot list subdirectories of", dir, err);
     return [];
   }
 }
@@ -205,19 +220,19 @@ async function findSessionPaths(ctx: AgentChatParserContext): Promise<string[]> 
             }
           }
           if (isDir) {
-            const contextPath = path.join(fullPath, 'context.jsonl');
+            const contextPath = path.join(fullPath, "context.jsonl");
             if (await pathExists(contextPath)) {
               results.push(fullPath);
             }
-          } else if (isFile && fullPath.endsWith('.jsonl')) {
+          } else if (isFile && fullPath.endsWith(".jsonl")) {
             results.push(fullPath);
           }
-        } else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+        } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
           results.push(fullPath);
         }
       }
     } catch (err) {
-      ctx.log.debug('kimi: cannot read workdir session directory', workdirDir, err);
+      ctx.log.debug("kimi: cannot read workdir session directory", workdirDir, err);
     }
   }
 
@@ -228,13 +243,13 @@ async function findSessionPaths(ctx: AgentChatParserContext): Promise<string[]> 
  * Parse legacy metadata.json and current state.json from a Kimi session directory.
  */
 function extractMetadataFields(raw: Record<string, unknown>): KimiMetadataFields {
-  const title = stringField(raw, 'custom_title') || stringField(raw, 'title');
-  const wireMtime = numberField(raw, 'wire_mtime');
-  const archivedPresent = typeof raw.archived === 'boolean';
+  const title = stringField(raw, "custom_title") || stringField(raw, "title");
+  const wireMtime = numberField(raw, "wire_mtime");
+  const archivedPresent = typeof raw.archived === "boolean";
 
   return {
-    sessionId: stringField(raw, 'session_id'),
-    title: title && title !== 'Untitled' ? title : undefined,
+    sessionId: stringField(raw, "session_id"),
+    title: title && title !== "Untitled" ? title : undefined,
     archived: archivedPresent ? raw.archived === true : undefined,
     ...(wireMtime !== undefined ? { wireMtime } : {}),
     archivedPresent,
@@ -254,8 +269,8 @@ async function parseSessionMetadata(
   sessionDir: string,
 ): Promise<KimiSessionMetadata> {
   const [legacyRaw, stateRaw] = await Promise.all([
-    readJsonObject(ctx, path.join(sessionDir, 'metadata.json')),
-    readJsonObject(ctx, path.join(sessionDir, 'state.json')),
+    readJsonObject(ctx, path.join(sessionDir, "metadata.json")),
+    readJsonObject(ctx, path.join(sessionDir, "state.json")),
   ]);
 
   const legacy = legacyRaw ? extractMetadataFields(legacyRaw) : emptyMetadataFields();
@@ -274,12 +289,12 @@ async function getMetadataCreatedAt(
   sessionDir: string,
   fallback: Date,
 ): Promise<Date> {
-  for (const filename of ['state.json', 'metadata.json']) {
+  for (const filename of ["state.json", "metadata.json"]) {
     try {
       const stats = await fs.promises.stat(path.join(sessionDir, filename));
       return stats.birthtime;
     } catch (err) {
-      ctx.log.debug('kimi: metadata stats unavailable', sessionDir, filename, err);
+      ctx.log.debug("kimi: metadata stats unavailable", sessionDir, filename, err);
     }
   }
 
@@ -306,7 +321,7 @@ async function readContextData(
   try {
     stats = await fs.promises.stat(contextPath);
   } catch (err) {
-    ctx.log.debug('kimi: failed to stat context', contextPath, err);
+    ctx.log.debug("kimi: failed to stat context", contextPath, err);
     return empty;
   }
 
@@ -316,28 +331,28 @@ async function readContextData(
 
   const messages: KimiMessage[] = [];
 
-  const decoder = new StringDecoder('utf8');
+  const decoder = new StringDecoder("utf8");
   const stream = fs.createReadStream(contextPath);
-  let lineBuffer = '';
+  let lineBuffer = "";
 
   const finishLine = (line: string): void => {
     if (line.length === 0) {
       return;
     }
-    const trimmed = line.endsWith('\r') ? line.slice(0, -1) : line;
+    const trimmed = line.endsWith("\r") ? line.slice(0, -1) : line;
     let parsed: unknown;
     try {
       parsed = JSON.parse(trimmed);
     } catch {
-      ctx.log.debug('kimi: skipping invalid JSON line in', contextPath);
+      ctx.log.debug("kimi: skipping invalid JSON line in", contextPath);
       return;
     }
     if (!isRecord(parsed)) {
-      ctx.log.debug('kimi: skipping non-object context record', contextPath);
+      ctx.log.debug("kimi: skipping non-object context record", contextPath);
       return;
     }
-    if (typeof parsed.role !== 'string') {
-      ctx.log.debug('kimi: skipping context record with missing role', contextPath);
+    if (typeof parsed.role !== "string") {
+      ctx.log.debug("kimi: skipping context record with missing role", contextPath);
       return;
     }
     messages.push(parsed as KimiMessage);
@@ -347,13 +362,13 @@ async function readContextData(
     for await (const chunk of stream) {
       const text = decoder.write(chunk as Buffer);
       let start = 0;
-      let newlineIndex = text.indexOf('\n', start);
+      let newlineIndex = text.indexOf("\n", start);
       while (newlineIndex !== -1) {
         lineBuffer += text.slice(start, newlineIndex);
         finishLine(lineBuffer);
-        lineBuffer = '';
+        lineBuffer = "";
         start = newlineIndex + 1;
-        newlineIndex = text.indexOf('\n', start);
+        newlineIndex = text.indexOf("\n", start);
       }
       lineBuffer += text.slice(start);
     }
@@ -363,7 +378,7 @@ async function readContextData(
       finishLine(lineBuffer);
     }
   } catch (err) {
-    ctx.log.debug('kimi: failed to read context', sessionPath, err);
+    ctx.log.debug("kimi: failed to read context", sessionPath, err);
     return empty;
   }
 
@@ -377,17 +392,19 @@ async function readContextData(
 
 function getContentBlocks(content: unknown): KimiContentBlock[] {
   if (!Array.isArray(content)) return [];
-  return content.filter((block): block is KimiContentBlock => isRecord(block) && typeof block.type === 'string');
+  return content.filter(
+    (block): block is KimiContentBlock => isRecord(block) && typeof block.type === "string",
+  );
 }
 
 function extractMessageText(content: unknown): string {
-  if (typeof content === 'string' || content === undefined) {
+  if (typeof content === "string" || content === undefined) {
     return extractTextFromBlocks(content);
   }
 
   const blocks = getContentBlocks(content).map((block) => ({
     type: block.type,
-    text: typeof block.text === 'string' ? block.text : undefined,
+    text: typeof block.text === "string" ? block.text : undefined,
   }));
   return extractTextFromBlocks(blocks);
 }
@@ -397,12 +414,12 @@ function extractMessageText(content: unknown): string {
  */
 function extractFirstUserMessage(messages: KimiMessage[]): string {
   for (const msg of messages) {
-    if (msg.role === 'user') {
+    if (msg.role === "user") {
       const text = extractMessageText(msg.content);
       if (text) return text;
     }
   }
-  return '';
+  return "";
 }
 
 /**
@@ -434,7 +451,11 @@ export async function parseKimiSessions(ctx: AgentChatParserContext): Promise<Un
       const repo = extractRepoFromCwd(cwd);
 
       let updatedAt = contextData.mtime;
-      if (metadata.wireMtime !== null && metadata.wireMtime !== undefined && metadata.wireMtime > 0) {
+      if (
+        metadata.wireMtime !== null &&
+        metadata.wireMtime !== undefined &&
+        metadata.wireMtime > 0
+      ) {
         const wireUpdatedAt = new Date(metadata.wireMtime * 1000);
         if (!Number.isNaN(wireUpdatedAt.getTime())) {
           updatedAt = wireUpdatedAt;
@@ -443,7 +464,7 @@ export async function parseKimiSessions(ctx: AgentChatParserContext): Promise<Un
 
       sessions.push({
         id: sessionId,
-        source: 'kimi',
+        source: "kimi",
         cwd,
         repo,
         createdAt: metadataDir
@@ -453,7 +474,7 @@ export async function parseKimiSessions(ctx: AgentChatParserContext): Promise<Un
         originalPath: sessionPath,
       });
     } catch (err) {
-      ctx.log.debug('kimi: skipping unparseable session', sessionPath, err);
+      ctx.log.debug("kimi: skipping unparseable session", sessionPath, err);
       // Skip sessions we can't parse
     }
   }
@@ -472,19 +493,19 @@ export async function extractKimiContext(
   const parsedMessages: MessageDraft[] = [];
 
   for (const msg of contextData.messages) {
-    if (msg.role === 'user') {
+    if (msg.role === "user") {
       const content = extractMessageText(msg.content);
       if (content) {
         parsedMessages.push({
-          role: 'user',
+          role: "user",
           content,
         });
       }
-    } else if (msg.role === 'assistant') {
+    } else if (msg.role === "assistant") {
       const content = extractMessageText(msg.content);
       if (content) {
         parsedMessages.push({
-          role: 'assistant',
+          role: "assistant",
           content,
         });
       }

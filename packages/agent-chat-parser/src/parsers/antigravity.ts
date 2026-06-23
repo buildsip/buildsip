@@ -1,22 +1,30 @@
-import * as childProcess from 'node:child_process';
-import * as fs from 'node:fs';
-import * as fsp from 'node:fs/promises';
-import * as https from 'node:https';
-import { createRequire } from 'node:module';
-import * as path from 'node:path';
-import * as readline from 'node:readline';
-import type { AgentChatParserContext, ParsedAgentConversation, SessionSource, UnifiedSession } from '../types/index';
+import * as childProcess from "node:child_process";
+import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
+import * as https from "node:https";
+import { createRequire } from "node:module";
+import * as path from "node:path";
+import * as readline from "node:readline";
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  SessionSource,
+  UnifiedSession,
+} from "../types/index";
 import {
   cleanSummary,
   extractRepoFromCwd,
   homeDir,
   type MessageDraft,
   sequenceMessages,
-} from '../utils/parser-helpers';
+} from "../utils/parser-helpers";
 
-const SOURCE_NAME: SessionSource = 'antigravity';
-const SUMMARY_STATE_KEYS = ['antigravityUnifiedStateSync.trajectorySummaries', 'unifiedStateSync.trajectorySummaries'];
-const BRAIN_ARTIFACT_BASE_FILES = ['task.md', 'implementation_plan.md', 'walkthrough.md'];
+const SOURCE_NAME: SessionSource = "antigravity";
+const SUMMARY_STATE_KEYS = [
+  "antigravityUnifiedStateSync.trajectorySummaries",
+  "unifiedStateSync.trajectorySummaries",
+];
+const BRAIN_ARTIFACT_BASE_FILES = ["task.md", "implementation_plan.md", "walkthrough.md"];
 const UUIDISH_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const RPC_TIMEOUT_MS = 1500;
 const LAUNCH_POLL_INTERVAL_MS_DEFAULT = 500;
@@ -30,11 +38,11 @@ function envOverrideMs(name: string, fallback: number): number {
 }
 
 function getLaunchPollIntervalMs(): number {
-  return envOverrideMs('BUILDSIP_LAUNCH_POLL_INTERVAL_MS', LAUNCH_POLL_INTERVAL_MS_DEFAULT);
+  return envOverrideMs("BUILDSIP_LAUNCH_POLL_INTERVAL_MS", LAUNCH_POLL_INTERVAL_MS_DEFAULT);
 }
 
 function getLaunchTimeoutMs(): number {
-  return envOverrideMs('BUILDSIP_LAUNCH_TIMEOUT_MS', LAUNCH_TIMEOUT_MS_DEFAULT);
+  return envOverrideMs("BUILDSIP_LAUNCH_TIMEOUT_MS", LAUNCH_TIMEOUT_MS_DEFAULT);
 }
 
 interface SqlitePreparedStatement {
@@ -99,15 +107,15 @@ interface ProtoLengthDelimited {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function expandHome(value: string): string {
-  if (value === '~') return homeDir();
+  if (value === "~") return homeDir();
   if (value.startsWith(`~${path.sep}`)) return path.join(homeDir(), value.slice(2));
   return value;
 }
@@ -117,39 +125,47 @@ function getAntigravityRoot(): string {
   if (explicit) return expandHome(explicit);
 
   const configuredHome = process.env.GEMINI_CLI_HOME || homeDir();
-  if (path.basename(configuredHome) === 'antigravity') return configuredHome;
-  return path.join(configuredHome, '.gemini', 'antigravity');
+  if (path.basename(configuredHome) === "antigravity") return configuredHome;
+  return path.join(configuredHome, ".gemini", "antigravity");
 }
 
 function getConversationsDir(): string {
-  return path.join(getAntigravityRoot(), 'conversations');
+  return path.join(getAntigravityRoot(), "conversations");
 }
 
 function getBrainDir(): string {
-  return path.join(getAntigravityRoot(), 'brain');
+  return path.join(getAntigravityRoot(), "brain");
 }
 
 function getCodeTrackerDir(): string {
-  return path.join(getAntigravityRoot(), 'code_tracker');
+  return path.join(getAntigravityRoot(), "code_tracker");
 }
 
 function getStateDbPaths(): string[] {
   const explicit = process.env.ANTIGRAVITY_STATE_DB?.trim();
   if (explicit) return [expandHome(explicit)];
 
-  if (process.platform === 'darwin') {
+  if (process.platform === "darwin") {
     return [
-      path.join(homeDir(), 'Library', 'Application Support', 'Antigravity', 'User', 'globalStorage', 'state.vscdb'),
+      path.join(
+        homeDir(),
+        "Library",
+        "Application Support",
+        "Antigravity",
+        "User",
+        "globalStorage",
+        "state.vscdb",
+      ),
     ];
   }
 
-  if (process.platform === 'win32') {
-    const appData = process.env.APPDATA || path.join(homeDir(), 'AppData', 'Roaming');
-    return [path.join(appData, 'Antigravity', 'User', 'globalStorage', 'state.vscdb')];
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA || path.join(homeDir(), "AppData", "Roaming");
+    return [path.join(appData, "Antigravity", "User", "globalStorage", "state.vscdb")];
   }
 
-  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(homeDir(), '.config');
-  return [path.join(xdgConfig, 'Antigravity', 'User', 'globalStorage', 'state.vscdb')];
+  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(homeDir(), ".config");
+  return [path.join(xdgConfig, "Antigravity", "User", "globalStorage", "state.vscdb")];
 }
 
 async function exists(filePath: string): Promise<boolean> {
@@ -165,16 +181,19 @@ async function readDirSafe(ctx: AgentChatParserContext, dirPath: string): Promis
   try {
     return await fsp.readdir(dirPath, { withFileTypes: true });
   } catch (err) {
-    ctx.log.debug('antigravity: failed to read directory', dirPath, err);
+    ctx.log.debug("antigravity: failed to read directory", dirPath, err);
     return [];
   }
 }
 
-async function statSafe(ctx: AgentChatParserContext, filePath: string): Promise<fs.Stats | undefined> {
+async function statSafe(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<fs.Stats | undefined> {
   try {
     return await fsp.stat(filePath);
   } catch (err) {
-    ctx.log.debug('antigravity: failed to stat path', filePath, err);
+    ctx.log.debug("antigravity: failed to stat path", filePath, err);
     return undefined;
   }
 }
@@ -198,7 +217,7 @@ function firstString(record: Record<string, unknown>, keys: string[]): string | 
   for (const key of keys) {
     const value = record[key];
     if (isNonEmptyString(value)) return value.trim();
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
   }
   return undefined;
 }
@@ -206,7 +225,7 @@ function firstString(record: Record<string, unknown>, keys: string[]): string | 
 function firstNumber(record: Record<string, unknown>, keys: string[]): number | undefined {
   for (const key of keys) {
     const value = record[key];
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
     if (isNonEmptyString(value)) {
       const parsed = Number(value);
       if (Number.isFinite(parsed)) return parsed;
@@ -223,9 +242,9 @@ function recordAt(record: Record<string, unknown>, key: string): Record<string, 
 function decodeFileUri(uri: string): string | undefined {
   try {
     const url = new URL(uri);
-    if (url.protocol !== 'file:') return undefined;
+    if (url.protocol !== "file:") return undefined;
     const pathname = decodeURIComponent(url.pathname);
-    if (process.platform === 'win32' && /^\/[A-Za-z]:/u.test(pathname)) return pathname.slice(1);
+    if (process.platform === "win32" && /^\/[A-Za-z]:/u.test(pathname)) return pathname.slice(1);
     return pathname;
   } catch {
     return undefined;
@@ -234,7 +253,7 @@ function decodeFileUri(uri: string): string | undefined {
 
 function normalizeCwd(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  if (value.startsWith('file://')) return decodeFileUri(value);
+  if (value.startsWith("file://")) return decodeFileUri(value);
   return value;
 }
 
@@ -245,7 +264,11 @@ function trimAtControlCharacter(value: string): string {
   return value;
 }
 
-function addRecord(records: Map<string, AntigravityRecord>, id: string, patch: Partial<AntigravityRecord>): void {
+function addRecord(
+  records: Map<string, AntigravityRecord>,
+  id: string,
+  patch: Partial<AntigravityRecord>,
+): void {
   if (!id) return;
   const existing = records.get(id) ?? { id };
   records.set(id, { ...existing, ...patch, id });
@@ -257,8 +280,8 @@ async function discoverConversationRecords(
 ): Promise<void> {
   const conversationsDir = getConversationsDir();
   for (const entry of await readDirSafe(ctx, conversationsDir)) {
-    if (!entry.isFile() || !entry.name.endsWith('.pb')) continue;
-    const id = path.basename(entry.name, '.pb');
+    if (!entry.isFile() || !entry.name.endsWith(".pb")) continue;
+    const id = path.basename(entry.name, ".pb");
     addRecord(records, id, { conversationPath: path.join(conversationsDir, entry.name) });
   }
 }
@@ -306,7 +329,7 @@ async function discoverBrainRecords(
 }
 
 function stripBinaryPrefix(line: string): string | null {
-  const idx = line.indexOf('{');
+  const idx = line.indexOf("{");
   if (idx === -1) return null;
   return line.slice(idx);
 }
@@ -318,10 +341,10 @@ function parseLegacyLine(line: string): AntigravityEntry | null {
 
   try {
     const obj: unknown = JSON.parse(json);
-    if (isRecord(obj) && isNonEmptyString(obj.type) && typeof obj.content === 'string') {
+    if (isRecord(obj) && isNonEmptyString(obj.type) && typeof obj.content === "string") {
       return {
         type: obj.type,
-        timestamp: typeof obj.timestamp === 'string' ? obj.timestamp : '',
+        timestamp: typeof obj.timestamp === "string" ? obj.timestamp : "",
         content: obj.content,
       };
     }
@@ -332,9 +355,12 @@ function parseLegacyLine(line: string): AntigravityEntry | null {
   return null;
 }
 
-async function parseLegacySessionFile(ctx: AgentChatParserContext, filePath: string): Promise<AntigravityEntry[]> {
+async function parseLegacySessionFile(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<AntigravityEntry[]> {
   try {
-    const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+    const stream = fs.createReadStream(filePath, { encoding: "utf8" });
     const rl = readline.createInterface({
       input: stream,
       crlfDelay: Number.POSITIVE_INFINITY,
@@ -346,7 +372,7 @@ async function parseLegacySessionFile(ctx: AgentChatParserContext, filePath: str
     }
     return entries;
   } catch (err) {
-    ctx.log.debug('antigravity: failed to read legacy session file', filePath, err);
+    ctx.log.debug("antigravity: failed to read legacy session file", filePath, err);
     return [];
   }
 }
@@ -362,7 +388,10 @@ async function findLegacySessionFiles(ctx: AgentChatParserContext): Promise<stri
       const entryPath = path.join(dirPath, entry.name);
       if (entry.isDirectory()) {
         pendingDirs.push(entryPath);
-      } else if (entry.isFile() && (entry.name.endsWith('.json') || entry.name.endsWith('.jsonl'))) {
+      } else if (
+        entry.isFile() &&
+        (entry.name.endsWith(".json") || entry.name.endsWith(".jsonl"))
+      ) {
         files.push(entryPath);
       }
     }
@@ -378,47 +407,57 @@ async function discoverLegacyRecords(
   const codeTrackerDir = getCodeTrackerDir();
   for (const filePath of await findLegacySessionFiles(ctx)) {
     const entries = await parseLegacySessionFile(ctx, filePath);
-    if (!entries.some((entry) => entry.type === 'user' || entry.type === 'assistant')) continue;
+    if (!entries.some((entry) => entry.type === "user" || entry.type === "assistant")) continue;
     const ext = path.extname(filePath);
     // Use the code_tracker-relative path (separators → ':') so two legacy
     // sessions whose basenames collide across subdirectories don't merge in
     // addRecord. Falls back to basename for any file outside code_tracker/.
     const relative = path.relative(codeTrackerDir, filePath);
     const idBase =
-      relative && !relative.startsWith('..')
-        ? relative.slice(0, -ext.length).replace(/[\\/]/gu, ':')
+      relative && !relative.startsWith("..")
+        ? relative.slice(0, -ext.length).replace(/[\\/]/gu, ":")
         : path.basename(filePath, ext);
     addRecord(records, `legacy:${idBase}`, { legacyPath: filePath });
   }
 }
 
-function openDb(ctx: AgentChatParserContext, dbPath: string): { db: SqliteDatabase; close: () => void } | null {
+function openDb(
+  ctx: AgentChatParserContext,
+  dbPath: string,
+): { db: SqliteDatabase; close: () => void } | null {
   try {
     const require = createRequire(import.meta.url);
-    const sqliteModule = require('node:sqlite') as {
-      DatabaseSync: new (database: string, options?: { open?: boolean; readOnly?: boolean }) => SqliteDatabase;
+    const sqliteModule = require("node:sqlite") as {
+      DatabaseSync: new (
+        database: string,
+        options?: { open?: boolean; readOnly?: boolean },
+      ) => SqliteDatabase;
     };
     const db = new sqliteModule.DatabaseSync(dbPath, { open: true, readOnly: true });
     return { db, close: () => db.close() };
   } catch (err) {
-    ctx.log.debug('antigravity: failed to open state database', dbPath, err);
+    ctx.log.debug("antigravity: failed to open state database", dbPath, err);
     return null;
   }
 }
 
-function readStateValue(ctx: AgentChatParserContext, dbPath: string, key: string): string | undefined {
+function readStateValue(
+  ctx: AgentChatParserContext,
+  dbPath: string,
+  key: string,
+): string | undefined {
   const handle = openDb(ctx, dbPath);
   if (!handle) return undefined;
 
   try {
-    const row = handle.db.prepare('SELECT value FROM ItemTable WHERE key = ?').get(key);
+    const row = handle.db.prepare("SELECT value FROM ItemTable WHERE key = ?").get(key);
     if (!isRecord(row)) return undefined;
     const value = row.value;
-    if (typeof value === 'string') return value;
-    if (value instanceof Uint8Array) return Buffer.from(value).toString('utf8');
+    if (typeof value === "string") return value;
+    if (value instanceof Uint8Array) return Buffer.from(value).toString("utf8");
     return value == null ? undefined : String(value);
   } catch (err) {
-    ctx.log.debug('antigravity: failed to read state key', key, err);
+    ctx.log.debug("antigravity: failed to read state key", key, err);
     return undefined;
   } finally {
     handle.close();
@@ -428,7 +467,7 @@ function readStateValue(ctx: AgentChatParserContext, dbPath: string, key: string
 function base64ToBytes(value: string | undefined): Uint8Array | undefined {
   if (!value) return undefined;
   try {
-    return Uint8Array.from(Buffer.from(value.trim(), 'base64'));
+    return Uint8Array.from(Buffer.from(value.trim(), "base64"));
   } catch {
     return undefined;
   }
@@ -436,7 +475,7 @@ function base64ToBytes(value: string | undefined): Uint8Array | undefined {
 
 function bytesToUtf8(bytes: Uint8Array): string | undefined {
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
     return undefined;
   }
@@ -547,7 +586,11 @@ function findTimestampInProto(bytes: Uint8Array, maxDepth: number, depth = 0): n
   return undefined;
 }
 
-function* iterUtf8StringsInProto(bytes: Uint8Array, maxDepth: number, depth = 0): Generator<string> {
+function* iterUtf8StringsInProto(
+  bytes: Uint8Array,
+  maxDepth: number,
+  depth = 0,
+): Generator<string> {
   if (depth > maxDepth) return;
 
   let offset = 0;
@@ -578,7 +621,7 @@ function extractFolderFromSummaryProto(bytes: Uint8Array): string | undefined {
   for (const text of iterUtf8StringsInProto(bytes, 6)) {
     const match = text.match(/#?file:\/\/[^\s"]+/u);
     if (!match) continue;
-    const rawUri = match[0].startsWith('#') ? match[0].slice(1) : match[0];
+    const rawUri = match[0].startsWith("#") ? match[0].slice(1) : match[0];
     const uri = trimAtControlCharacter(rawUri);
     const folder = decodeFileUri(uri);
     if (folder) return folder;
@@ -643,7 +686,9 @@ function extractStateSummaryFromProto(id: string, bytes: Uint8Array): StateSumma
     ...(cwd ? { cwd } : {}),
     ...(uniqueTimestamps[0] ? { createdAt: new Date(uniqueTimestamps[0]) } : {}),
     ...(uniqueTimestamps.at(-1) ? { updatedAt: new Date(uniqueTimestamps.at(-1)!) } : {}),
-    ...(Math.max(primaryCount, secondaryCount) > 0 ? { stepCount: Math.max(primaryCount, secondaryCount) } : {}),
+    ...(Math.max(primaryCount, secondaryCount) > 0
+      ? { stepCount: Math.max(primaryCount, secondaryCount) }
+      : {}),
   };
 }
 
@@ -760,25 +805,32 @@ async function discoverStateRecords(
 
 function parseLiveSummary(id: string, raw: unknown): LiveSummary | null {
   if (!isRecord(raw)) return null;
-  const workspace = Array.isArray(raw.workspaces) && isRecord(raw.workspaces[0]) ? raw.workspaces[0] : {};
+  const workspace =
+    Array.isArray(raw.workspaces) && isRecord(raw.workspaces[0]) ? raw.workspaces[0] : {};
   const cwd =
-    normalizeCwd(firstString(workspace, ['workspaceFolderAbsoluteUri', 'workspaceFolderUri', 'uri', 'path'])) ??
-    normalizeCwd(firstString(raw, ['cwd', 'folder', 'workspaceFolderAbsoluteUri', 'workspaceFolderUri']));
-  const createdAt = parseTimestamp(firstString(raw, ['createdTime', 'createdAt', 'creationTime']));
-  const updatedAt = parseTimestamp(firstString(raw, ['lastModifiedTime', 'updatedAt', 'lastUpdatedAt']));
-  const rawModel = firstString(raw, ['lastGeneratorModelUid', 'model', 'modelUid']);
+    normalizeCwd(
+      firstString(workspace, ["workspaceFolderAbsoluteUri", "workspaceFolderUri", "uri", "path"]),
+    ) ??
+    normalizeCwd(
+      firstString(raw, ["cwd", "folder", "workspaceFolderAbsoluteUri", "workspaceFolderUri"]),
+    );
+  const createdAt = parseTimestamp(firstString(raw, ["createdTime", "createdAt", "creationTime"]));
+  const updatedAt = parseTimestamp(
+    firstString(raw, ["lastModifiedTime", "updatedAt", "lastUpdatedAt"]),
+  );
+  const rawModel = firstString(raw, ["lastGeneratorModelUid", "model", "modelUid"]);
 
   return {
     id,
-    ...(firstString(raw, ['summary', 'title', 'name'])
-      ? { title: firstString(raw, ['summary', 'title', 'name']) }
+    ...(firstString(raw, ["summary", "title", "name"])
+      ? { title: firstString(raw, ["summary", "title", "name"]) }
       : {}),
     ...(cwd ? { cwd } : {}),
     ...(createdAt ? { createdAt } : {}),
     ...(updatedAt ? { updatedAt } : {}),
-    ...(firstNumber(raw, ['stepCount', 'bubbleCount', 'messageCount'])
+    ...(firstNumber(raw, ["stepCount", "bubbleCount", "messageCount"])
       ? {
-          stepCount: firstNumber(raw, ['stepCount', 'bubbleCount', 'messageCount']),
+          stepCount: firstNumber(raw, ["stepCount", "bubbleCount", "messageCount"]),
         }
       : {}),
     ...(rawModel ? { model: normalizeModelName(rawModel) } : {}),
@@ -788,12 +840,13 @@ function parseLiveSummary(id: string, raw: unknown): LiveSummary | null {
 function parseLiveSummaryResponse(response: unknown): Map<string, LiveSummary> {
   const summaries = new Map<string, LiveSummary>();
   if (!isRecord(response)) return summaries;
-  const rawSummaries = response.trajectorySummaries ?? response.cascadeTrajectories ?? response.trajectories;
+  const rawSummaries =
+    response.trajectorySummaries ?? response.cascadeTrajectories ?? response.trajectories;
 
   if (Array.isArray(rawSummaries)) {
     for (const item of rawSummaries) {
       if (!isRecord(item)) continue;
-      const id = firstString(item, ['cascadeId', 'composerId', 'id', 'trajectoryId']);
+      const id = firstString(item, ["cascadeId", "composerId", "id", "trajectoryId"]);
       if (!id) continue;
       const parsed = parseLiveSummary(id, item);
       if (parsed) summaries.set(id, parsed);
@@ -812,7 +865,7 @@ function parseLiveSummaryResponse(response: unknown): Map<string, LiveSummary> {
 }
 
 function parsePortFlag(commandLine: string, flag: string): number | undefined {
-  const value = commandLine.match(new RegExp(`--${flag}\\s+(\\d+)`, 'u'))?.[1];
+  const value = commandLine.match(new RegExp(`--${flag}\\s+(\\d+)`, "u"))?.[1];
   if (!value) return undefined;
   const port = Number(value);
   return Number.isInteger(port) && port > 0 ? port : undefined;
@@ -820,20 +873,25 @@ function parsePortFlag(commandLine: string, flag: string): number | undefined {
 
 function parseFallbackPort(commandLine: string): number | undefined {
   const explicit =
-    parsePortFlag(commandLine, 'server_port') ??
-    parsePortFlag(commandLine, 'api_server_port') ??
-    parsePortFlag(commandLine, 'extension_server_port');
+    parsePortFlag(commandLine, "server_port") ??
+    parsePortFlag(commandLine, "api_server_port") ??
+    parsePortFlag(commandLine, "extension_server_port");
   return explicit;
 }
 
 function isAntigravityLanguageServer(commandLine: string): boolean {
-  return commandLine.includes('language_server_') && commandLine.includes('--app_data_dir antigravity');
+  return (
+    commandLine.includes("language_server_") && commandLine.includes("--app_data_dir antigravity")
+  );
 }
 
-function parseRpcConnectionFromCommand(commandLine: string, listeningPorts: number[]): RpcConnection | null {
+function parseRpcConnectionFromCommand(
+  commandLine: string,
+  listeningPorts: number[],
+): RpcConnection | null {
   if (!isAntigravityLanguageServer(commandLine)) return null;
   const csrfToken = commandLine.match(/--csrf_token\s+(\S+)/u)?.[1];
-  const preferredPort = parsePortFlag(commandLine, 'server_port');
+  const preferredPort = parsePortFlag(commandLine, "server_port");
   const port =
     preferredPort && listeningPorts.includes(preferredPort)
       ? preferredPort
@@ -848,8 +906,8 @@ function runExecFile(
   options: childProcess.ExecFileOptionsWithStringEncoding,
 ): Promise<{ stdout: string }> {
   const execFile = (childProcess as { execFile?: typeof childProcess.execFile }).execFile;
-  if (typeof execFile !== 'function') {
-    return Promise.reject(new Error('child_process.execFile is unavailable'));
+  if (typeof execFile !== "function") {
+    return Promise.reject(new Error("child_process.execFile is unavailable"));
   }
 
   return new Promise((resolve, reject) => {
@@ -866,50 +924,53 @@ function runExecFile(
 async function getProcessRecords(ctx: AgentChatParserContext): Promise<ProcessRecord[]> {
   try {
     const command =
-      process.platform === 'win32'
+      process.platform === "win32"
         ? {
-            file: 'powershell',
+            file: "powershell",
             args: [
-              '-NoProfile',
-              '-Command',
-              'Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine',
+              "-NoProfile",
+              "-Command",
+              "Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine",
             ],
           }
-        : { file: 'ps', args: ['-axo', 'pid=,command='] };
+        : { file: "ps", args: ["-axo", "pid=,command="] };
     const { stdout } = await runExecFile(command.file, command.args, {
-      encoding: 'utf8',
+      encoding: "utf8",
       timeout: 2000,
       maxBuffer: 10 * 1024 * 1024,
     });
-    if (process.platform === 'win32') {
+    if (process.platform === "win32") {
       return stdout
-        .split('\n')
+        .split("\n")
         .map((line) => line.trim())
         .filter(Boolean)
         .map((commandLine) => ({ commandLine }));
     }
 
-    return stdout.split('\n').flatMap((line): ProcessRecord[] => {
+    return stdout.split("\n").flatMap((line): ProcessRecord[] => {
       const match = line.match(/^\s*(\d+)\s+(.+)$/u);
       return match ? [{ pid: match[1]!, commandLine: match[2]!.trim() }] : [];
     });
   } catch (err) {
-    ctx.log.debug('antigravity: failed to inspect running language server', err);
+    ctx.log.debug("antigravity: failed to inspect running language server", err);
     return [];
   }
 }
 
-async function getListeningPorts(ctx: AgentChatParserContext, pid: string | undefined): Promise<number[]> {
-  if (!pid || process.platform === 'win32') return [];
+async function getListeningPorts(
+  ctx: AgentChatParserContext,
+  pid: string | undefined,
+): Promise<number[]> {
+  if (!pid || process.platform === "win32") return [];
 
   try {
-    const { stdout } = await runExecFile('lsof', ['-i', 'TCP', '-P', '-n', '-a', '-p', pid], {
-      encoding: 'utf8',
+    const { stdout } = await runExecFile("lsof", ["-i", "TCP", "-P", "-n", "-a", "-p", pid], {
+      encoding: "utf8",
       timeout: 2000,
       maxBuffer: 2 * 1024 * 1024,
     });
     return stdout
-      .split('\n')
+      .split("\n")
       .flatMap((line): number[] => {
         const match = line.match(/TCP\s+(?:127\.0\.0\.1|localhost|\*):(\d+)\s+\(LISTEN\)/u);
         if (!match) return [];
@@ -918,13 +979,13 @@ async function getListeningPorts(ctx: AgentChatParserContext, pid: string | unde
       })
       .sort((left, right) => left - right);
   } catch (err) {
-    ctx.log.debug('antigravity: failed to inspect language server ports', err);
+    ctx.log.debug("antigravity: failed to inspect language server ports", err);
     return [];
   }
 }
 
 async function findRpcConnection(ctx: AgentChatParserContext): Promise<RpcConnection | null> {
-  if (process.env.ANTIGRAVITY_DISABLE_RPC === '1') return null;
+  if (process.env.ANTIGRAVITY_DISABLE_RPC === "1") return null;
 
   // Filter by the cheap command-line predicate first so we only spawn
   // `lsof` for genuine Antigravity language-server candidates. Without this,
@@ -952,16 +1013,16 @@ function callRpc(
   return new Promise((resolve) => {
     const req = https.request(
       {
-        hostname: '127.0.0.1',
+        hostname: "127.0.0.1",
         port: connection.port,
         path: `/exa.language_server_pb.LanguageServerService/${method}`,
-        method: 'POST',
+        method: "POST",
         rejectUnauthorized: false,
         timeout: RPC_TIMEOUT_MS,
         headers: {
-          'content-type': 'application/json',
-          'content-length': Buffer.byteLength(body),
-          'x-codeium-csrf-token': connection.csrfToken,
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(body),
+          "x-codeium-csrf-token": connection.csrfToken,
         },
       },
       (res) => {
@@ -969,36 +1030,36 @@ function callRpc(
         let receivedBytes = 0;
         const MAX_RPC_RESPONSE_BYTES = 32 * 1024 * 1024;
         let aborted = false;
-        res.on('data', (chunk: Buffer) => {
+        res.on("data", (chunk: Buffer) => {
           if (aborted) return;
           receivedBytes += chunk.length;
           if (receivedBytes > MAX_RPC_RESPONSE_BYTES) {
             aborted = true;
-            ctx.log.debug('antigravity: RPC response exceeded cap', method, receivedBytes);
+            ctx.log.debug("antigravity: RPC response exceeded cap", method, receivedBytes);
             req.destroy();
             resolve(null);
             return;
           }
           chunks.push(chunk);
         });
-        res.on('end', () => {
+        res.on("end", () => {
           if (aborted) return;
           try {
-            const text = Buffer.concat(chunks).toString('utf8');
+            const text = Buffer.concat(chunks).toString("utf8");
             resolve(text ? JSON.parse(text) : null);
           } catch (err) {
-            ctx.log.debug('antigravity: failed to parse RPC response', method, err);
+            ctx.log.debug("antigravity: failed to parse RPC response", method, err);
             resolve(null);
           }
         });
       },
     );
 
-    req.on('error', (err) => {
-      ctx.log.debug('antigravity: RPC request failed', method, err);
+    req.on("error", (err) => {
+      ctx.log.debug("antigravity: RPC request failed", method, err);
       resolve(null);
     });
-    req.on('timeout', () => {
+    req.on("timeout", () => {
       req.destroy();
       resolve(null);
     });
@@ -1012,7 +1073,7 @@ async function discoverLiveRecords(
 ): Promise<void> {
   const connection = await findRpcConnection(ctx);
   if (!connection) return;
-  const response = await callRpc(ctx, connection, 'GetAllCascadeTrajectories', {});
+  const response = await callRpc(ctx, connection, "GetAllCascadeTrajectories", {});
   for (const [id, live] of parseLiveSummaryResponse(response)) {
     addRecord(records, id, { live });
   }
@@ -1020,23 +1081,26 @@ async function discoverLiveRecords(
 
 function normalizeModelName(model: string): string {
   return model
-    .replace(/^MODEL_/u, '')
-    .replace(/_/gu, '-')
+    .replace(/^MODEL_/u, "")
+    .replace(/_/gu, "-")
     .toLowerCase();
 }
 
-async function readArtifact(ctx: AgentChatParserContext, filePath: string): Promise<string | undefined> {
+async function readArtifact(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<string | undefined> {
   try {
-    const text = await fsp.readFile(filePath, 'utf8');
+    const text = await fsp.readFile(filePath, "utf8");
     return text.trim();
   } catch (err) {
-    ctx.log.debug('antigravity: failed to read artifact', filePath, err);
+    ctx.log.debug("antigravity: failed to read artifact", filePath, err);
     return undefined;
   }
 }
 
 function firstMarkdownHeading(markdown: string): string | undefined {
-  for (const line of markdown.split('\n')) {
+  for (const line of markdown.split("\n")) {
     const heading = line.match(/^#{1,6}\s+(.+)$/u)?.[1]?.trim();
     if (heading) return heading;
   }
@@ -1083,7 +1147,10 @@ async function pathStats(
   };
 }
 
-async function brainArtifactPaths(ctx: AgentChatParserContext, brainDir: string | undefined): Promise<string[]> {
+async function brainArtifactPaths(
+  ctx: AgentChatParserContext,
+  brainDir: string | undefined,
+): Promise<string[]> {
   if (!brainDir) return [];
   const files: string[] = [];
   for (const fileName of BRAIN_ARTIFACT_BASE_FILES) {
@@ -1105,11 +1172,20 @@ async function buildSessionFromRecord(
   if (!record.conversationPath && !record.brainDir) return null;
 
   const artifactPaths = await brainArtifactPaths(ctx, record.brainDir);
-  const stats = await pathStats(ctx, [record.conversationPath, ...artifactPaths].filter(isNonEmptyString));
-  const cwd = record.live?.cwd ?? record.state?.cwd ?? (await inferCwdFromBrain(ctx, record.brainDir)) ?? '';
+  const stats = await pathStats(
+    ctx,
+    [record.conversationPath, ...artifactPaths].filter(isNonEmptyString),
+  );
+  const cwd =
+    record.live?.cwd ?? record.state?.cwd ?? (await inferCwdFromBrain(ctx, record.brainDir)) ?? "";
   const createdAt =
-    record.live?.createdAt ?? record.state?.createdAt ?? stats.createdAt ?? stats.updatedAt ?? new Date(0);
-  const updatedAt = record.live?.updatedAt ?? record.state?.updatedAt ?? stats.updatedAt ?? createdAt;
+    record.live?.createdAt ??
+    record.state?.createdAt ??
+    stats.createdAt ??
+    stats.updatedAt ??
+    new Date(0);
+  const updatedAt =
+    record.live?.updatedAt ?? record.state?.updatedAt ?? stats.updatedAt ?? createdAt;
   const originalPath = record.conversationPath ?? record.brainDir ?? getAntigravityRoot();
 
   return {
@@ -1130,7 +1206,7 @@ async function buildLegacySession(
   prefixedId?: string,
 ): Promise<UnifiedSession | null> {
   const entries = await parseLegacySessionFile(ctx, filePath);
-  const relevant = entries.filter((entry) => entry.type === 'user' || entry.type === 'assistant');
+  const relevant = entries.filter((entry) => entry.type === "user" || entry.type === "assistant");
   if (relevant.length === 0) return null;
 
   const fileStats = await statSafe(ctx, filePath);
@@ -1143,15 +1219,17 @@ async function buildLegacySession(
   return {
     id,
     source: SOURCE_NAME,
-    cwd: '',
-    repo: 'antigravity',
+    cwd: "",
+    repo: "antigravity",
     createdAt,
     updatedAt,
     originalPath: filePath,
   };
 }
 
-async function discoverRecords(ctx: AgentChatParserContext): Promise<Map<string, AntigravityRecord>> {
+async function discoverRecords(
+  ctx: AgentChatParserContext,
+): Promise<Map<string, AntigravityRecord>> {
   const records = new Map<string, AntigravityRecord>();
   await discoverConversationRecords(ctx, records);
   await discoverBrainRecords(ctx, records);
@@ -1161,7 +1239,9 @@ async function discoverRecords(ctx: AgentChatParserContext): Promise<Map<string,
   return records;
 }
 
-export async function parseAntigravitySessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+export async function parseAntigravitySessions(
+  ctx: AgentChatParserContext,
+): Promise<UnifiedSession[]> {
   const records = await discoverRecords(ctx);
   const sessions: UnifiedSession[] = [];
 
@@ -1182,7 +1262,7 @@ async function readLegacyMessages(
   const messages: MessageDraft[] = [];
 
   for (const entry of entries) {
-    if (entry.type !== 'user' && entry.type !== 'assistant') continue;
+    if (entry.type !== "user" && entry.type !== "assistant") continue;
     messages.push({
       role: entry.type,
       content: entry.content,
@@ -1194,7 +1274,7 @@ async function readLegacyMessages(
 }
 
 function extractSessionId(session: UnifiedSession): string {
-  return session.id.startsWith('legacy:') ? session.id.slice('legacy:'.length) : session.id;
+  return session.id.startsWith("legacy:") ? session.id.slice("legacy:".length) : session.id;
 }
 
 async function resolveBrainDirForSession(
@@ -1205,7 +1285,8 @@ async function resolveBrainDirForSession(
   const direct = path.join(getBrainDir(), id);
   if (await exists(direct)) return direct;
   const maybeRecordDir = path.dirname(session.originalPath);
-  if (path.basename(maybeRecordDir) === id && (await hasBrainArtifacts(ctx, maybeRecordDir))) return maybeRecordDir;
+  if (path.basename(maybeRecordDir) === id && (await hasBrainArtifacts(ctx, maybeRecordDir)))
+    return maybeRecordDir;
   return undefined;
 }
 
@@ -1215,7 +1296,10 @@ function taskFromMarkdown(markdown: string): string | undefined {
   return cleanSummary(markdown, 100);
 }
 
-async function readOfflineArtifacts(ctx: AgentChatParserContext, brainDir: string | undefined): Promise<{
+async function readOfflineArtifacts(
+  ctx: AgentChatParserContext,
+  brainDir: string | undefined,
+): Promise<{
   messages: MessageDraft[];
 }> {
   if (!brainDir) {
@@ -1223,21 +1307,21 @@ async function readOfflineArtifacts(ctx: AgentChatParserContext, brainDir: strin
   }
 
   const messages: MessageDraft[] = [];
-  const taskPath = await findBrainArtifactPath(ctx, brainDir, 'task.md');
-  const planPath = await findBrainArtifactPath(ctx, brainDir, 'implementation_plan.md');
-  const walkthroughPath = await findBrainArtifactPath(ctx, brainDir, 'walkthrough.md');
+  const taskPath = await findBrainArtifactPath(ctx, brainDir, "task.md");
+  const planPath = await findBrainArtifactPath(ctx, brainDir, "implementation_plan.md");
+  const walkthroughPath = await findBrainArtifactPath(ctx, brainDir, "walkthrough.md");
   const task = taskPath ? await readArtifact(ctx, taskPath) : undefined;
   const plan = planPath ? await readArtifact(ctx, planPath) : undefined;
   const walkthrough = walkthroughPath ? await readArtifact(ctx, walkthroughPath) : undefined;
 
   if (task) {
-    messages.push({ role: 'user', content: taskFromMarkdown(task) ?? task });
+    messages.push({ role: "user", content: taskFromMarkdown(task) ?? task });
   }
   if (plan) {
-    messages.push({ role: 'assistant', content: `Implementation plan:\n\n${plan}` });
+    messages.push({ role: "assistant", content: `Implementation plan:\n\n${plan}` });
   }
   if (walkthrough) {
-    messages.push({ role: 'assistant', content: `Walkthrough:\n\n${walkthrough}` });
+    messages.push({ role: "assistant", content: `Walkthrough:\n\n${walkthrough}` });
   }
 
   return { messages };
@@ -1249,12 +1333,12 @@ function parsePromptMessages(raw: unknown): MessageDraft[] {
 
   for (const item of raw) {
     if (!isRecord(item)) continue;
-    const prompt = firstString(item, ['prompt', 'content', 'text']);
+    const prompt = firstString(item, ["prompt", "content", "text"]);
     if (!prompt) continue;
-    const source = firstString(item, ['source', 'role']) ?? '';
-    if (source === 'CHAT_MESSAGE_SOURCE_SYSTEM' || source === 'system') continue;
-    const role: MessageDraft['role'] =
-      source === 'CHAT_MESSAGE_SOURCE_USER' || source === 'user' ? 'user' : 'assistant';
+    const source = firstString(item, ["source", "role"]) ?? "";
+    if (source === "CHAT_MESSAGE_SOURCE_SYSTEM" || source === "system") continue;
+    const role: MessageDraft["role"] =
+      source === "CHAT_MESSAGE_SOURCE_USER" || source === "user" ? "user" : "assistant";
     messages.push({ role, content: prompt });
   }
 
@@ -1271,7 +1355,7 @@ function getTailMessagesFromTrajectory(
   for (let index = metadata.length - 1; index >= 0; index -= 1) {
     const item = metadata[index];
     if (!isRecord(item)) continue;
-    const chatModel = recordAt(item, 'chatModel');
+    const chatModel = recordAt(item, "chatModel");
     const messagePrompts = chatModel.messagePrompts;
     if (Array.isArray(messagePrompts) && messagePrompts.length > 0) {
       prompts = messagePrompts;
@@ -1283,14 +1367,14 @@ function getTailMessagesFromTrajectory(
   const promptMessages = parsePromptMessages(prompts);
   const lastUser = [...stepMessages]
     .reverse()
-    .find((message) => message.role === 'user' && message.content.length > 20);
+    .find((message) => message.role === "user" && message.content.length > 20);
   if (!lastUser) return [];
   const needle = lastUser.content.slice(0, 50);
   let matchIndex = -1;
   for (let index = promptMessages.length - 1; index >= 0; index -= 1) {
     const message = promptMessages[index];
     if (!message) continue;
-    if (message.role === 'user' && message.content.includes(needle)) {
+    if (message.role === "user" && message.content.includes(needle)) {
       matchIndex = index;
       break;
     }
@@ -1300,47 +1384,57 @@ function getTailMessagesFromTrajectory(
 }
 
 function extractTextItems(items: unknown): string {
-  if (!Array.isArray(items)) return '';
+  if (!Array.isArray(items)) return "";
   return items
     .map((item) => {
-      if (!isRecord(item)) return '';
-      return firstString(item, ['text', 'content', 'prompt']) ?? '';
+      if (!isRecord(item)) return "";
+      return firstString(item, ["text", "content", "prompt"]) ?? "";
     })
     .filter(Boolean)
-    .join('\n')
+    .join("\n")
     .trim();
 }
 
 function parseStepTimestamp(step: Record<string, unknown>, fallback: Date): Date {
-  const meta = recordAt(step, 'metadata');
+  const meta = recordAt(step, "metadata");
   return (
-    parseTimestamp(firstString(step, ['createdTime', 'timestamp', 'startTime'])) ??
-    parseTimestamp(firstString(meta, ['createdTime', 'timestamp', 'startTime'])) ??
-    dateFromEpoch(firstNumber(step, ['createdAt', 'timeCreated'])) ??
+    parseTimestamp(firstString(step, ["createdTime", "timestamp", "startTime"])) ??
+    parseTimestamp(firstString(meta, ["createdTime", "timestamp", "startTime"])) ??
+    dateFromEpoch(firstNumber(step, ["createdAt", "timeCreated"])) ??
     fallback
   );
 }
 
-function extractPlannerMessage(step: Record<string, unknown>, timestamp: Date): MessageDraft | null {
-  const plannerResponse = recordAt(step, 'plannerResponse');
+function extractPlannerMessage(
+  step: Record<string, unknown>,
+  timestamp: Date,
+): MessageDraft | null {
+  const plannerResponse = recordAt(step, "plannerResponse");
   if (Object.keys(plannerResponse).length === 0) return null;
 
-  const content = firstString(plannerResponse, ['modifiedResponse', 'response', 'textContent', 'content', 'text']);
+  const content = firstString(plannerResponse, [
+    "modifiedResponse",
+    "response",
+    "textContent",
+    "content",
+    "text",
+  ]);
   if (!content) return null;
   return {
-    role: 'assistant',
+    role: "assistant",
     content,
     timestamp,
   };
 }
 
 function extractUserMessage(step: Record<string, unknown>, timestamp: Date): MessageDraft | null {
-  const userInput = recordAt(step, 'userInput');
-  const askUserQuestion = recordAt(step, 'askUserQuestion');
+  const userInput = recordAt(step, "userInput");
+  const askUserQuestion = recordAt(step, "askUserQuestion");
   const source = Object.keys(userInput).length > 0 ? userInput : askUserQuestion;
   const text =
-    firstString(source, ['userResponse', 'question', 'text', 'content', 'prompt']) || extractTextItems(source.items);
-  return text ? { role: 'user', content: text, timestamp } : null;
+    firstString(source, ["userResponse", "question", "text", "content", "prompt"]) ||
+    extractTextItems(source.items);
+  return text ? { role: "user", content: text, timestamp } : null;
 }
 
 function extractFromSteps(steps: unknown[], fallbackDate: Date): RpcStepExtraction {
@@ -1348,16 +1442,16 @@ function extractFromSteps(steps: unknown[], fallbackDate: Date): RpcStepExtracti
 
   for (const rawStep of steps) {
     if (!isRecord(rawStep)) continue;
-    const type = firstString(rawStep, ['type']) ?? '';
+    const type = firstString(rawStep, ["type"]) ?? "";
     const timestamp = parseStepTimestamp(rawStep, fallbackDate);
 
-    if (type === 'CORTEX_STEP_TYPE_USER_INPUT' || type === 'CORTEX_STEP_TYPE_ASK_USER_QUESTION') {
+    if (type === "CORTEX_STEP_TYPE_USER_INPUT" || type === "CORTEX_STEP_TYPE_ASK_USER_QUESTION") {
       const message = extractUserMessage(rawStep, timestamp);
       if (message) messages.push(message);
       continue;
     }
 
-    if (type === 'CORTEX_STEP_TYPE_PLANNER_RESPONSE') {
+    if (type === "CORTEX_STEP_TYPE_PLANNER_RESPONSE") {
       const message = extractPlannerMessage(rawStep, timestamp);
       if (message) messages.push(message);
     }
@@ -1369,7 +1463,7 @@ function extractFromSteps(steps: unknown[], fallbackDate: Date): RpcStepExtracti
 function extractStepsResponse(response: unknown): unknown[] {
   if (!isRecord(response)) return [];
   if (Array.isArray(response.steps)) return response.steps;
-  const trajectory = recordAt(response, 'trajectory');
+  const trajectory = recordAt(response, "trajectory");
   if (Array.isArray(trajectory.steps)) return trajectory.steps;
   return [];
 }
@@ -1383,19 +1477,21 @@ async function extractLiveContext(
   if (!connection) return null;
 
   const cascadeId = extractSessionId(session);
-  const stepsResponse = await callRpc(ctx, connection, 'GetCascadeTrajectorySteps', { cascadeId });
+  const stepsResponse = await callRpc(ctx, connection, "GetCascadeTrajectorySteps", { cascadeId });
   let steps = extractStepsResponse(stepsResponse);
   let trajectory: Record<string, unknown> | undefined;
 
   if (steps.length === 0) {
-    const fallbackResponse = await callRpc(ctx, connection, 'GetCascadeTrajectory', { cascadeId });
+    const fallbackResponse = await callRpc(ctx, connection, "GetCascadeTrajectory", { cascadeId });
     if (isRecord(fallbackResponse)) {
-      trajectory = recordAt(fallbackResponse, 'trajectory');
+      trajectory = recordAt(fallbackResponse, "trajectory");
       steps = extractStepsResponse(fallbackResponse);
     }
   } else {
-    const trajectoryResponse = await callRpc(ctx, connection, 'GetCascadeTrajectory', { cascadeId });
-    if (isRecord(trajectoryResponse)) trajectory = recordAt(trajectoryResponse, 'trajectory');
+    const trajectoryResponse = await callRpc(ctx, connection, "GetCascadeTrajectory", {
+      cascadeId,
+    });
+    if (isRecord(trajectoryResponse)) trajectory = recordAt(trajectoryResponse, "trajectory");
   }
 
   if (steps.length === 0) return null;
@@ -1413,10 +1509,10 @@ function liveHasContent(live: RpcStepExtraction): boolean {
 
 function shouldAutoLaunchAntigravity(): boolean {
   // Test/CI escape hatch — also honored by findRpcConnection.
-  if (process.env.ANTIGRAVITY_DISABLE_RPC === '1') return false;
+  if (process.env.ANTIGRAVITY_DISABLE_RPC === "1") return false;
   const explicit = process.env.BUILDSIP_LAUNCH_ANTIGRAVITY?.trim();
-  if (explicit === '0' || explicit === 'false' || explicit === 'no') return false;
-  if (explicit === '1' || explicit === 'true' || explicit === 'yes') return true;
+  if (explicit === "0" || explicit === "false" || explicit === "no") return false;
+  if (explicit === "1" || explicit === "true" || explicit === "yes") return true;
   // Default: only auto-launch in interactive terminals so piped/CI runs stay headless.
   return Boolean(process.stdout.isTTY);
 }
@@ -1424,24 +1520,30 @@ function shouldAutoLaunchAntigravity(): boolean {
 function spawnAntigravity(ctx: AgentChatParserContext): boolean {
   try {
     let child: childProcess.ChildProcess;
-    if (process.platform === 'darwin') {
-      child = childProcess.spawn('open', ['-a', 'Antigravity'], { detached: true, stdio: 'ignore' });
-    } else if (process.platform === 'win32') {
-      child = childProcess.spawn('cmd', ['/c', 'start', '', 'antigravity'], { detached: true, stdio: 'ignore' });
+    if (process.platform === "darwin") {
+      child = childProcess.spawn("open", ["-a", "Antigravity"], {
+        detached: true,
+        stdio: "ignore",
+      });
+    } else if (process.platform === "win32") {
+      child = childProcess.spawn("cmd", ["/c", "start", "", "antigravity"], {
+        detached: true,
+        stdio: "ignore",
+      });
     } else {
-      child = childProcess.spawn('antigravity', [], { detached: true, stdio: 'ignore' });
+      child = childProcess.spawn("antigravity", [], { detached: true, stdio: "ignore" });
     }
     // node emits launch failures (e.g. ENOENT when the binary is missing) on
     // the async 'error' event, not synchronously. without this listener an
     // uncaught exception would crash the cli and skip the offline fallback.
     // mirrors the launch pattern used by the old CLI wrapper.
-    child.on('error', (err) => {
-      ctx.log.debug('antigravity: spawned IDE process error', err);
+    child.on("error", (err) => {
+      ctx.log.debug("antigravity: spawned IDE process error", err);
     });
     child.unref();
     return true;
   } catch (err) {
-    ctx.log.debug('antigravity: failed to spawn IDE', err);
+    ctx.log.debug("antigravity: failed to spawn IDE", err);
     return false;
   }
 }
@@ -1479,7 +1581,9 @@ async function tryAutoLaunchAndConnect(ctx: AgentChatParserContext): Promise<Rpc
   if (existing) return null;
 
   if (!spawnAntigravity(ctx)) {
-    ctx.log.warn('antigravity: could not launch Antigravity — falling back to offline brain artifacts.');
+    ctx.log.warn(
+      "antigravity: could not launch Antigravity — falling back to offline brain artifacts.",
+    );
     return null;
   }
 
@@ -1487,8 +1591,8 @@ async function tryAutoLaunchAndConnect(ctx: AgentChatParserContext): Promise<Rpc
   // (up to 25s while the ide spins up) rather than diagnostic output, so keep
   // them on warn instead of debug.
   ctx.log.warn(
-    'antigravity: language server is offline — launching the IDE to read the encrypted transcript… ' +
-      '(set BUILDSIP_LAUNCH_ANTIGRAVITY=0 to skip)',
+    "antigravity: language server is offline — launching the IDE to read the encrypted transcript… " +
+      "(set BUILDSIP_LAUNCH_ANTIGRAVITY=0 to skip)",
   );
 
   const timeoutMs = getLaunchTimeoutMs();
@@ -1524,7 +1628,7 @@ export async function extractAntigravityContext(
   ctx: AgentChatParserContext,
   session: UnifiedSession,
 ): Promise<ParsedAgentConversation> {
-  if (session.id.startsWith('legacy:')) {
+  if (session.id.startsWith("legacy:")) {
     const messages = await readLegacyMessages(ctx, session.originalPath, session.updatedAt);
     return {
       session,

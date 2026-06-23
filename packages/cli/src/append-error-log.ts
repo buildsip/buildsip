@@ -9,11 +9,7 @@ type ErrorLogEntry = {
   message: string;
 };
 
-export async function appendErrorLog(params: {
-  agent?: string;
-  type: string;
-  message: string;
-}) {
+export async function appendErrorLog(params: { agent?: string; type: string; message: string }) {
   try {
     const { errorsPath } = await findProjectStore();
     const entry: ErrorLogEntry = {

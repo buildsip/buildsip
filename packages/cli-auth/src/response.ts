@@ -13,12 +13,7 @@ export function readOAuthError(value: unknown, fallback: string) {
     return fallback;
   }
 
-  return (
-    result.data.error_description ??
-    result.data.error ??
-    result.data.msg ??
-    fallback
-  );
+  return result.data.error_description ?? result.data.error ?? result.data.msg ?? fallback;
 }
 
 export function readOAuthErrorCode(value: unknown) {

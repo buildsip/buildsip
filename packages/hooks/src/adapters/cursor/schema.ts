@@ -17,7 +17,4 @@ export const cursorResponseInputSchema = cursorInputSchema.extend({
   text: z.string().min(1),
 });
 
-export const cursorEventInputSchema = z.union([
-  cursorPromptInputSchema,
-  cursorResponseInputSchema,
-]);
+export const cursorEventInputSchema = z.union([cursorPromptInputSchema, cursorResponseInputSchema]);
