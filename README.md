@@ -56,7 +56,7 @@ pnpm buildsip init
 
 If you get this error:
 
-> [ERROR] The configured global bin directory "/Users/cristina/Library/pnpm/bin" is not in PATH
+> [ERROR] The configured global bin directory [dir] is not in PATH
 
 Run:
 
