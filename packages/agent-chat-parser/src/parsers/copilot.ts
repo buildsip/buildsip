@@ -38,7 +38,10 @@ function parseWorkspaceYaml(content: string): Record<string, unknown> {
     const match = /^([a-z_][\w]*):\s*(.*)$/i.exec(trimmed);
     if (!match) continue;
 
-    const [, key, rawValue] = match;
+    const key = match[1];
+    if (!key) continue;
+
+    const rawValue = match[2] ?? '';
     if (rawValue === '|' || rawValue === '>') {
       while (i + 1 < lines.length && /^[ \t]/.test(lines[i + 1]!)) {
         i++;
