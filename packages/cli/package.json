@@ -17,7 +17,8 @@
     "buildsip": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "publishConfig": {
     "access": "public"
@@ -25,7 +26,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "buildsip": "pnpm build && node ./dist/index.js",
-    "prepack": "pnpm build",
+    "prepack": "pnpm build && node scripts/readme.mjs copy",
+    "postpack": "node scripts/readme.mjs clean",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
