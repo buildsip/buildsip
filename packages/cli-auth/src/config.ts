@@ -1,7 +1,7 @@
 export const config = {
   configName: "auth",
   get issuerUrl() {
-    return process.env.BUILDSIP_URL ?? "https://buildsip.dev";
+    return process.env.BUILDSIP_URL ?? "https://buildsip.com";
   },
   loginTimeoutMs: 5 * 60 * 1000, // 5 minutes
   get oauthClientId() {
