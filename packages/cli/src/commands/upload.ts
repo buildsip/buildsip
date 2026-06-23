@@ -1,10 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import {
-  BetterFetchError,
-  ValidationError,
-  betterFetch,
-} from "@better-fetch/fetch";
+import { BetterFetchError, ValidationError, betterFetch } from "@better-fetch/fetch";
 import { cancel, intro, outro, spinner } from "@clack/prompts";
 import { auth } from "@buildsip/cli-auth";
 import type { Command } from "commander";
@@ -66,9 +62,7 @@ export function registerUploadCommand(program: Command) {
         const storyPaths = await findMarkdownPaths(tempDir);
 
         if (!options.until) {
-          throw new Error(
-            "Upload requires --until from the buildsip prepare result.",
-          );
+          throw new Error("Upload requires --until from the buildsip prepare result.");
         }
 
         if (storyPaths.length === 0) {

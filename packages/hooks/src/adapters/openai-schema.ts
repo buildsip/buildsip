@@ -16,7 +16,4 @@ export const openaiStopInputSchema = openaiInputSchema.extend({
   last_assistant_message: z.string().nullable(),
 });
 
-export const openaiEventInputSchema = z.union([
-  openaiPromptInputSchema,
-  openaiStopInputSchema,
-]);
+export const openaiEventInputSchema = z.union([openaiPromptInputSchema, openaiStopInputSchema]);

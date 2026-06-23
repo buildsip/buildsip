@@ -3,9 +3,9 @@
  * Each schema validates untrusted data from disk (JSONL, JSON, YAML, SQLite).
  * Schemas use .passthrough() to tolerate extra fields from future tool versions.
  */
-import { z } from 'zod';
-import { ContentBlockSchema } from './content-blocks';
-import { TOOL_NAMES } from './tool-names';
+import { z } from "zod";
+import { ContentBlockSchema } from "./content-blocks";
+import { TOOL_NAMES } from "./tool-names";
 
 // ── Claude ──────────────────────────────────────────────────────────────────
 
@@ -27,7 +27,11 @@ export const ClaudeMessageSchema = z
         content: z
           .union([
             z.string(),
-            z.array(ContentBlockSchema.or(z.object({ type: z.string(), text: z.string().optional() }).passthrough())),
+            z.array(
+              ContentBlockSchema.or(
+                z.object({ type: z.string(), text: z.string().optional() }).passthrough(),
+              ),
+            ),
           ])
           .optional(),
       })
@@ -43,7 +47,7 @@ export type ClaudeMessage = z.infer<typeof ClaudeMessageSchema>;
 export const CodexSessionMetaSchema = z
   .object({
     timestamp: z.string(),
-    type: z.literal('session_meta'),
+    type: z.literal("session_meta"),
     payload: z
       .object({
         id: z.string().optional(),
@@ -70,13 +74,15 @@ export const CodexSessionMetaSchema = z
 export const CodexEventMsgSchema = z
   .object({
     timestamp: z.string(),
-    type: z.literal('event_msg'),
+    type: z.literal("event_msg"),
     payload: z
       .object({
         type: z.string().optional(),
         role: z.string().optional(),
         message: z.string().optional(),
-        content: z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough()).optional(),
+        content: z
+          .array(z.object({ type: z.string(), text: z.string().optional() }).passthrough())
+          .optional(),
       })
       .passthrough()
       .optional(),
@@ -87,7 +93,7 @@ export const CodexEventMsgSchema = z
 export const CodexResponseItemSchema = z
   .object({
     timestamp: z.string(),
-    type: z.literal('response_item'),
+    type: z.literal("response_item"),
     payload: z
       .object({
         type: z.string().optional(),
@@ -95,7 +101,9 @@ export const CodexResponseItemSchema = z
         name: z.string().optional(),
         namespace: z.string().optional(),
         input: z.string().optional(),
-        content: z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough()).optional(),
+        content: z
+          .array(z.object({ type: z.string(), text: z.string().optional() }).passthrough())
+          .optional(),
       })
       .passthrough()
       .optional(),
@@ -105,7 +113,7 @@ export const CodexResponseItemSchema = z
 export const CodexTurnContextSchema = z
   .object({
     timestamp: z.string(),
-    type: z.literal('turn_context'),
+    type: z.literal("turn_context"),
     payload: z
       .object({
         model: z.string().optional(),
@@ -118,7 +126,7 @@ export const CodexTurnContextSchema = z
 export const CodexCompactedSchema = z
   .object({
     timestamp: z.string(),
-    type: z.literal('compacted'),
+    type: z.literal("compacted"),
     payload: z
       .object({
         message: z.string().optional(),
@@ -129,7 +137,7 @@ export const CodexCompactedSchema = z
   })
   .passthrough();
 
-export const CodexMessageSchema = z.discriminatedUnion('type', [
+export const CodexMessageSchema = z.discriminatedUnion("type", [
   CodexSessionMetaSchema,
   CodexEventMsgSchema,
   CodexResponseItemSchema,
@@ -255,7 +263,7 @@ export const OpenCodeMessageSchema = z
   .object({
     id: z.string(),
     sessionID: z.string(),
-    role: z.enum(['user', 'assistant']),
+    role: z.enum(["user", "assistant"]),
     time: z.object({
       created: z.number(),
       completed: z.number().optional(),
@@ -319,7 +327,7 @@ export type SqliteProjectRow = z.infer<typeof SqliteProjectRowSchema>;
 
 export const DroidSessionStartSchema = z
   .object({
-    type: z.literal('session_start'),
+    type: z.literal("session_start"),
     id: z.string(),
     title: z.string(),
     sessionTitle: z.string(),
@@ -333,20 +341,25 @@ export const DroidSessionStartSchema = z
 
 export const DroidMessageEventSchema = z
   .object({
-    type: z.literal('message'),
+    type: z.literal("message"),
     id: z.string(),
     timestamp: z.string(),
     parentId: z.string().optional(),
     message: z.object({
-      role: z.enum(['user', 'assistant']),
+      role: z.enum(["user", "assistant"]),
       content: z.array(
-        ContentBlockSchema.or(z.object({ type: z.string(), text: z.string().optional() }).passthrough()),
+        ContentBlockSchema.or(
+          z.object({ type: z.string(), text: z.string().optional() }).passthrough(),
+        ),
       ),
     }),
   })
   .passthrough();
 
-export const DroidEventSchema = z.discriminatedUnion('type', [DroidSessionStartSchema, DroidMessageEventSchema]);
+export const DroidEventSchema = z.discriminatedUnion("type", [
+  DroidSessionStartSchema,
+  DroidMessageEventSchema,
+]);
 
 export const DroidSettingsSchema = z
   .object({
@@ -382,7 +395,10 @@ export const KimiMessageSchema = z
   .object({
     role: z.string(),
     content: z
-      .union([z.string(), z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough())])
+      .union([
+        z.string(),
+        z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough()),
+      ])
       .optional(),
     id: z.number().optional(),
   })
@@ -395,10 +411,12 @@ export type KimiMessage = z.infer<typeof KimiMessageSchema>;
 
 export const CursorTranscriptLineSchema = z
   .object({
-    role: z.enum(['user', 'assistant']),
+    role: z.enum(["user", "assistant"]),
     message: z.object({
       content: z.array(
-        ContentBlockSchema.or(z.object({ type: z.string(), text: z.string().optional() }).passthrough()),
+        ContentBlockSchema.or(
+          z.object({ type: z.string(), text: z.string().optional() }).passthrough(),
+        ),
       ),
     }),
   })
@@ -432,7 +450,7 @@ export const QwenChatRecordSchema = z
     parentUuid: z.union([z.string(), z.null()]),
     sessionId: z.string(),
     timestamp: z.string(),
-    type: z.enum(['user', 'assistant', 'system']),
+    type: z.enum(["user", "assistant", "system"]),
     subtype: z.string().optional(),
     cwd: z.string(),
     version: z.string().optional(),

@@ -1,16 +1,26 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { AgentChatParserContext, ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
-import type { DroidEvent, DroidSessionStart, DroidSettings } from '../types/schemas';
-import { DroidSettingsSchema } from '../types/schemas';
-import { isSystemContent } from '../utils/content';
-import { findFiles } from '../utils/fs-helpers';
-import { readJsonlFile, scanJsonlFile } from '../utils/jsonl';
-import { extractRepoFromCwd, homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
-import { cwdFromSlug } from '../utils/slug';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  SessionParseOptions,
+  UnifiedSession,
+} from "../types/index";
+import type { DroidEvent, DroidSessionStart, DroidSettings } from "../types/schemas";
+import { DroidSettingsSchema } from "../types/schemas";
+import { isSystemContent } from "../utils/content";
+import { findFiles } from "../utils/fs-helpers";
+import { readJsonlFile, scanJsonlFile } from "../utils/jsonl";
+import {
+  extractRepoFromCwd,
+  homeDir,
+  type MessageDraft,
+  sequenceMessages,
+} from "../utils/parser-helpers";
+import { cwdFromSlug } from "../utils/slug";
 
-const DROID_PROJECTS_DIR = path.join(homeDir(), '.factory', 'projects');
-const DROID_SESSIONS_DIR = path.join(homeDir(), '.factory', 'sessions');
+const DROID_PROJECTS_DIR = path.join(homeDir(), ".factory", "projects");
+const DROID_SESSIONS_DIR = path.join(homeDir(), ".factory", "sessions");
 const DROID_SESSION_DIRS = [DROID_PROJECTS_DIR, DROID_SESSIONS_DIR];
 
 /**
@@ -24,7 +34,7 @@ async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> 
   for (const root of DROID_SESSION_DIRS) {
     for (const filePath of findFiles(ctx, root, {
       match: (entry) =>
-        entry.name.endsWith('.jsonl') &&
+        entry.name.endsWith(".jsonl") &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i.test(entry.name),
       maxDepth: 3,
     })) {
@@ -38,16 +48,18 @@ async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> 
  * Read companion .settings.json for a session
  */
 function readSettings(ctx: AgentChatParserContext, jsonlPath: string): DroidSettings | null {
-  const settingsPath = jsonlPath.replace(/\.jsonl$/, '.settings.json');
+  const settingsPath = jsonlPath.replace(/\.jsonl$/, ".settings.json");
   try {
     if (fs.existsSync(settingsPath)) {
-      const result = DroidSettingsSchema.safeParse(JSON.parse(fs.readFileSync(settingsPath, 'utf8')));
+      const result = DroidSettingsSchema.safeParse(
+        JSON.parse(fs.readFileSync(settingsPath, "utf8")),
+      );
       if (result.success) return result.data;
-      ctx.log.debug('droid: settings validation failed', settingsPath, result.error.message);
+      ctx.log.debug("droid: settings validation failed", settingsPath, result.error.message);
       return null;
     }
   } catch (err) {
-    ctx.log.debug('droid: failed to read settings', settingsPath, err);
+    ctx.log.debug("droid: failed to read settings", settingsPath, err);
   }
   return null;
 }
@@ -55,7 +67,10 @@ function readSettings(ctx: AgentChatParserContext, jsonlPath: string): DroidSett
 /**
  * Parse session metadata from session_start event and first user message
  */
-async function parseSessionInfo(ctx: AgentChatParserContext, filePath: string): Promise<{
+async function parseSessionInfo(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<{
   sessionStart: DroidSessionStart | null;
   firstUserMessage: string;
   firstTimestamp: string;
@@ -63,36 +78,39 @@ async function parseSessionInfo(ctx: AgentChatParserContext, filePath: string): 
   cwdIsNotGitRepo: boolean;
 }> {
   let sessionStart: DroidSessionStart | null = null;
-  let firstUserMessage = '';
-  let firstTimestamp = '';
-  let lastTimestamp = '';
+  let firstUserMessage = "";
+  let firstTimestamp = "";
+  let lastTimestamp = "";
   let cwdIsNotGitRepo = false;
 
-  const visitor = (parsed: unknown): 'continue' | 'stop' => {
+  const visitor = (parsed: unknown): "continue" | "stop" => {
     const event = parsed as DroidEvent;
 
-    if (event.type === 'session_start' && !sessionStart) {
+    if (event.type === "session_start" && !sessionStart) {
       sessionStart = event;
     }
 
-    if ('timestamp' in event && typeof event.timestamp === 'string') {
+    if ("timestamp" in event && typeof event.timestamp === "string") {
       if (!firstTimestamp) firstTimestamp = event.timestamp;
       lastTimestamp = event.timestamp;
     }
 
-    if (event.type === 'message') {
-      if (!firstUserMessage && event.message.role === 'user') {
+    if (event.type === "message") {
+      if (!firstUserMessage && event.message.role === "user") {
         for (const block of event.message.content) {
-          if (block.type === 'text' && block.text) {
+          if (block.type === "text" && block.text) {
             const cleaned = stripDroidInjectedText(block.text);
-            if (block.text.includes('<system-reminder>') && block.text.includes('fatal: not a git repository')) {
+            if (
+              block.text.includes("<system-reminder>") &&
+              block.text.includes("fatal: not a git repository")
+            ) {
               cwdIsNotGitRepo = true;
             }
             if (
               cleaned &&
-              !cleaned.startsWith('<') &&
-              !cleaned.startsWith('/') &&
-              !cleaned.includes('Session Handoff')
+              !cleaned.startsWith("<") &&
+              !cleaned.startsWith("/") &&
+              !cleaned.includes("Session Handoff")
             ) {
               firstUserMessage = cleaned;
               break;
@@ -102,7 +120,7 @@ async function parseSessionInfo(ctx: AgentChatParserContext, filePath: string): 
       }
     }
 
-    return 'continue';
+    return "continue";
   };
 
   await scanJsonlFile(ctx, filePath, visitor);
@@ -139,7 +157,7 @@ export async function parseDroidSessions(
 
       const nextSession: UnifiedSession = {
         id: sessionStart.id,
-        source: 'droid',
+        source: "droid",
         cwd,
         repo: cwdIsNotGitRepo ? undefined : extractRepoFromCwd(cwd),
         createdAt,
@@ -152,16 +170,22 @@ export async function parseDroidSessions(
       const existingTime = existing?.updatedAt.getTime() ?? 0;
       const nextTime = nextSession.updatedAt.getTime();
       const nextIsProjectTranscript = nextSession.originalPath.startsWith(DROID_PROJECTS_DIR);
-      if (!existing || existingTime < nextTime || (existingTime === nextTime && nextIsProjectTranscript)) {
+      if (
+        !existing ||
+        existingTime < nextTime ||
+        (existingTime === nextTime && nextIsProjectTranscript)
+      ) {
         sessionsById.set(nextSession.id, nextSession);
       }
     } catch (err) {
-      ctx.log.debug('droid: skipping unparseable session', filePath, err);
+      ctx.log.debug("droid: skipping unparseable session", filePath, err);
       // Skip files we can't parse
     }
   }
 
-  return Array.from(sessionsById.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  return Array.from(sessionsById.values()).sort(
+    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+  );
 }
 
 /**
@@ -177,11 +201,11 @@ export async function extractDroidContext(
   const messages: MessageDraft[] = [];
 
   for (const event of events) {
-    if (event.type !== 'message') continue;
+    if (event.type !== "message") continue;
 
     const textParts: string[] = [];
     for (const block of event.message.content) {
-      if (block.type === 'text' && block.text) {
+      if (block.type === "text" && block.text) {
         const cleaned = stripDroidInjectedText(block.text);
         if (cleaned && !isSystemContent(cleaned)) {
           textParts.push(cleaned);
@@ -189,11 +213,11 @@ export async function extractDroidContext(
       }
     }
 
-    const text = textParts.join('\n').trim();
+    const text = textParts.join("\n").trim();
     if (!text) continue;
 
     messages.push({
-      role: event.message.role === 'user' ? 'user' : 'assistant',
+      role: event.message.role === "user" ? "user" : "assistant",
       content: text,
       timestamp: event.timestamp ? new Date(event.timestamp) : undefined,
       sourceId: event.id,
@@ -208,18 +232,18 @@ export async function extractDroidContext(
 }
 
 function stripDroidInjectedText(text: string): string {
-  const hadSystemReminder = text.includes('<system-reminder>');
+  const hadSystemReminder = text.includes("<system-reminder>");
   let result = text
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/giu, '')
-    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/giu, '')
-    .replace(/<command-name>[\s\S]*?<\/command-name>/giu, '');
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/giu, "")
+    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/giu, "")
+    .replace(/<command-name>[\s\S]*?<\/command-name>/giu, "");
   if (hadSystemReminder) {
     // Strip TodoWrite tool-list dump only when it appears as a contiguous run of
     // CapitalizedToolName lines starting at a line boundary. Earlier `[\s\S]*$`
     // version was too greedy: `\nTodoWrite\nListTodos\n<user prose>` deleted the
     // user prose along with the tool list. The bounded form stops at the first
     // non-capitalized line, preserving any trailing user content.
-    result = result.replace(/^[ \t]*TodoWrite\b(?:\r?\n[ \t]*[A-Z][A-Za-z0-9]+\b)*[ \t]*\r?$/m, '');
+    result = result.replace(/^[ \t]*TodoWrite\b(?:\r?\n[ \t]*[A-Z][A-Za-z0-9]+\b)*[ \t]*\r?$/m, "");
   }
   return result.trim();
 }

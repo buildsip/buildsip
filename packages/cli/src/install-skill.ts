@@ -43,16 +43,7 @@ export async function installSkill(options: InstallSkillOptions) {
       }),
     )
     .parse(
-      JSON.parse(
-        await runCommand("npx", [
-          "-y",
-          "--silent",
-          "skills",
-          "list",
-          "-g",
-          "--json",
-        ]),
-      ),
+      JSON.parse(await runCommand("npx", ["-y", "--silent", "skills", "list", "-g", "--json"])),
     );
 
   if (!installed.some((skill) => skill.name === skillName)) {

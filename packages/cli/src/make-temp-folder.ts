@@ -11,8 +11,7 @@ function makeTempFolderId() {
   let id = "";
 
   for (let index = 0; index < TEMP_FOLDER_ID_LENGTH; index++) {
-    id +=
-      TEMP_FOLDER_ID_ALPHABET[bytes[index]! % TEMP_FOLDER_ID_ALPHABET.length];
+    id += TEMP_FOLDER_ID_ALPHABET[bytes[index]! % TEMP_FOLDER_ID_ALPHABET.length];
   }
 
   return id;

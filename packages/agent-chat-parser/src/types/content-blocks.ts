@@ -1,12 +1,12 @@
 /**
  * Shared visible text block type.
  */
-import { z } from 'zod';
+import { z } from "zod";
 
 // ── Zod Schemas ─────────────────────────────────────────────────────────────
 
 export const TextBlockSchema = z.object({
-  type: z.literal('text'),
+  type: z.literal("text"),
   text: z.string(),
 });
 

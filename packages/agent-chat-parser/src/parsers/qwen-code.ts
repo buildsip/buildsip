@@ -1,11 +1,20 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
-import type { QwenChatRecord, QwenContent, QwenPart } from '../types/schemas';
-import { QwenChatRecordSchema } from '../types/schemas';
-import { listSubdirectories } from '../utils/fs-helpers';
-import { scanJsonlLines } from '../utils/jsonl';
-import { extractRepoFromCwd, homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  UnifiedSession,
+} from "../types/index";
+import type { QwenChatRecord, QwenContent, QwenPart } from "../types/schemas";
+import { QwenChatRecordSchema } from "../types/schemas";
+import { listSubdirectories } from "../utils/fs-helpers";
+import { scanJsonlLines } from "../utils/jsonl";
+import {
+  extractRepoFromCwd,
+  homeDir,
+  type MessageDraft,
+  sequenceMessages,
+} from "../utils/parser-helpers";
 
 // Qwen Code stores chats under <runtime-base>/projects/<sanitized-cwd>/chats/<sessionId>.jsonl.
 //
@@ -40,8 +49,8 @@ interface QwenSessionMeta {
 
 function resolveConfiguredDir(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  if (value === '~') return homeDir();
-  if (value.startsWith('~/') || value.startsWith('~\\')) {
+  if (value === "~") return homeDir();
+  if (value.startsWith("~/") || value.startsWith("~\\")) {
     return path.join(homeDir(), value.slice(2));
   }
   return path.isAbsolute(value) ? value : path.resolve(value);
@@ -53,24 +62,24 @@ function getQwenRuntimeBaseDir(): string {
 
   const qwenHome = resolveConfiguredDir(process.env.QWEN_HOME);
   if (qwenHome) {
-    return path.basename(qwenHome) === '.qwen' ? qwenHome : path.join(qwenHome, '.qwen');
+    return path.basename(qwenHome) === ".qwen" ? qwenHome : path.join(qwenHome, ".qwen");
   }
 
-  return path.join(homeDir(), '.qwen');
+  return path.join(homeDir(), ".qwen");
 }
 
 function getQwenProjectsDir(): string {
-  return path.join(getQwenRuntimeBaseDir(), 'projects');
+  return path.join(getQwenRuntimeBaseDir(), "projects");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === "object" && value !== null;
 }
 
 function getBooleanField(value: unknown, field: string): boolean | undefined {
   if (!isRecord(value)) return undefined;
   const fieldValue = value[field];
-  return typeof fieldValue === 'boolean' ? fieldValue : undefined;
+  return typeof fieldValue === "boolean" ? fieldValue : undefined;
 }
 
 /** Parse a timestamp string defensively, falling back to a given Date */
@@ -88,7 +97,7 @@ function parseQwenChatRecord(
 ): QwenChatRecord | undefined {
   const result = QwenChatRecordSchema.safeParse(parsed);
   if (result.success) return result.data;
-  ctx.log.debug('qwen-code: skipping invalid record at index', lineIndex, 'in', filePath);
+  ctx.log.debug("qwen-code: skipping invalid record at index", lineIndex, "in", filePath);
   return undefined;
 }
 
@@ -133,14 +142,14 @@ function splitJsonObjects(text: string): string[] {
       if (start === undefined) {
         // Skip whitespace and any garbage (incl. top-level arrays/scalars)
         // before the next opening brace. See block comment above.
-        if (char !== '{') continue;
+        if (char !== "{") continue;
         start = index;
       }
 
       if (inString) {
         if (escaped) {
           escaped = false;
-        } else if (char === '\\') {
+        } else if (char === "\\") {
           escaped = true;
         } else if (char === '"') {
           inString = false;
@@ -153,12 +162,12 @@ function splitJsonObjects(text: string): string[] {
         continue;
       }
 
-      if (char === '{') {
+      if (char === "{") {
         depth++;
         continue;
       }
 
-      if (char === '}') {
+      if (char === "}") {
         depth--;
         if (depth === 0) {
           closedAt = index;
@@ -186,36 +195,51 @@ function splitJsonObjects(text: string): string[] {
 async function scanQwenJsonlFile(
   ctx: AgentChatParserContext,
   filePath: string,
-  visitor: (parsed: unknown, lineIndex: number) => 'continue' | 'stop',
+  visitor: (parsed: unknown, lineIndex: number) => "continue" | "stop",
 ): Promise<void> {
   if (!fs.existsSync(filePath)) return;
 
-  await scanJsonlLines(ctx,
+  await scanJsonlLines(
+    ctx,
     filePath,
     (line, lineIndex) => {
       const chunks = splitJsonObjects(line);
       if (chunks.length === 0 && line.trim()) {
-        ctx.log.debug('qwen-code: skipping malformed JSONL line at index', lineIndex, 'in', filePath);
+        ctx.log.debug(
+          "qwen-code: skipping malformed JSONL line at index",
+          lineIndex,
+          "in",
+          filePath,
+        );
       }
       for (const chunk of chunks) {
         try {
-          if (visitor(JSON.parse(chunk), lineIndex) === 'stop') return 'stop';
+          if (visitor(JSON.parse(chunk), lineIndex) === "stop") return "stop";
         } catch (err) {
-          ctx.log.debug('qwen-code: skipping invalid JSON object at index', lineIndex, 'in', filePath, err);
+          ctx.log.debug(
+            "qwen-code: skipping invalid JSON object at index",
+            lineIndex,
+            "in",
+            filePath,
+            err,
+          );
         }
       }
-      return 'continue';
+      return "continue";
     },
     { maxLineChars: MAX_QWEN_JSONL_RECORD_CHARS },
   );
 }
 
-async function readJsonlRecords(ctx: AgentChatParserContext, filePath: string): Promise<QwenChatRecord[]> {
+async function readJsonlRecords(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<QwenChatRecord[]> {
   const records: QwenChatRecord[] = [];
   await scanQwenJsonlFile(ctx, filePath, (parsed, lineIndex) => {
     const record = parseQwenChatRecord(ctx, parsed, filePath, lineIndex);
     if (record) records.push(record);
-    return 'continue';
+    return "continue";
   });
   return records;
 }
@@ -224,15 +248,15 @@ async function readJsonlRecords(ctx: AgentChatParserContext, filePath: string): 
 
 /** Extract non-thought text from parts */
 function extractTextFromParts(parts: QwenPart[] | undefined): string {
-  if (!parts) return '';
+  if (!parts) return "";
   return parts
     .filter((p) => p.text && !p.thought)
     .map((p) => p.text!)
-    .join('\n');
+    .join("\n");
 }
 
 function extractContentText(content: QwenContent | undefined): string {
-  if (!content?.parts) return '';
+  if (!content?.parts) return "";
   return extractTextFromParts(content.parts);
 }
 
@@ -245,18 +269,18 @@ async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> 
   if (!fs.existsSync(qwenProjectsDir)) return results;
 
   for (const projectDir of listSubdirectories(ctx, qwenProjectsDir)) {
-    const chatsDir = path.join(projectDir, 'chats');
+    const chatsDir = path.join(projectDir, "chats");
     if (!fs.existsSync(chatsDir)) continue;
 
     try {
       const entries = fs.readdirSync(chatsDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+        if (entry.isFile() && entry.name.endsWith(".jsonl")) {
           results.push(path.join(chatsDir, entry.name));
         }
       }
     } catch (err) {
-      ctx.log.debug('qwen-code: error reading chats dir', chatsDir, err);
+      ctx.log.debug("qwen-code: error reading chats dir", chatsDir, err);
     }
   }
 
@@ -265,28 +289,32 @@ async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> 
 
 // ── Session metadata extraction ─────────────────────────────────────────────
 
-async function extractSessionMeta(ctx: AgentChatParserContext, filePath: string): Promise<QwenSessionMeta | null> {
+async function extractSessionMeta(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<QwenSessionMeta | null> {
   let fileStat: fs.Stats;
   try {
     fileStat = await fs.promises.stat(filePath);
   } catch (err) {
-    ctx.log.debug('qwen-code: failed to stat session file', filePath, err);
+    ctx.log.debug("qwen-code: failed to stat session file", filePath, err);
     return null;
   }
 
-  let sessionId = '';
-  let cwd = '';
+  let sessionId = "";
+  let cwd = "";
   let gitBranch: string | undefined;
   let hasVisibleUserMessage = false;
   let firstTimestamp: string | undefined;
   let lastTimestamp: string | undefined;
   let model: string | undefined;
 
-  await scanJsonlLines(ctx,
+  await scanJsonlLines(
+    ctx,
     filePath,
     (line, lineIndex) => {
       const trimmed = line.trim();
-      if (!trimmed) return 'continue';
+      if (!trimmed) return "continue";
 
       const chunks = splitJsonObjects(line);
       for (const chunk of chunks) {
@@ -308,11 +336,11 @@ async function extractSessionMeta(ctx: AgentChatParserContext, filePath: string)
         if (!firstTimestamp && record.timestamp) firstTimestamp = record.timestamp;
         if (record.timestamp) lastTimestamp = record.timestamp;
 
-        if (record.type === 'user' && !hasVisibleUserMessage) {
+        if (record.type === "user" && !hasVisibleUserMessage) {
           hasVisibleUserMessage = extractContentText(record.message).length > 0;
         }
       }
-      return 'continue';
+      return "continue";
     },
     { maxLineChars: MAX_QWEN_JSONL_RECORD_CHARS },
   );
@@ -369,7 +397,7 @@ function aggregateRecordsByUuid(records: QwenChatRecord[]): QwenChatRecord[] {
 function getLastMainRecordUuid(records: QwenChatRecord[]): string | undefined {
   for (let i = records.length - 1; i >= 0; i--) {
     const record = records[i];
-    if (record && !getBooleanField(record, 'isSidechain')) return record.uuid;
+    if (record && !getBooleanField(record, "isSidechain")) return record.uuid;
   }
   return records.at(-1)?.uuid;
 }
@@ -425,7 +453,9 @@ function reconstructMainPath(records: QwenChatRecord[]): QwenChatRecord[] {
   return brokenChain || pathResult.length === 0 ? aggregated : pathResult;
 }
 
-export async function parseQwenCodeSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+export async function parseQwenCodeSessions(
+  ctx: AgentChatParserContext,
+): Promise<UnifiedSession[]> {
   const files = await findSessionFiles(ctx);
   const sessions: UnifiedSession[] = [];
 
@@ -438,7 +468,7 @@ export async function parseQwenCodeSessions(ctx: AgentChatParserContext): Promis
 
       sessions.push({
         id: meta.sessionId,
-        source: 'qwen-code',
+        source: "qwen-code",
         cwd: meta.cwd,
         repo: extractRepoFromCwd(meta.cwd),
         branch: meta.gitBranch,
@@ -448,7 +478,7 @@ export async function parseQwenCodeSessions(ctx: AgentChatParserContext): Promis
         model: meta.model,
       });
     } catch (err) {
-      ctx.log.debug('qwen-code: skipping unparseable session', filePath, err);
+      ctx.log.debug("qwen-code: skipping unparseable session", filePath, err);
     }
   }
 
@@ -464,7 +494,7 @@ export async function extractQwenCodeContext(
   let model = session.model;
 
   const mainPath = reconstructMainPath(records);
-  const messageRecords = mainPath.filter((r) => r.type === 'user' || r.type === 'assistant');
+  const messageRecords = mainPath.filter((r) => r.type === "user" || r.type === "assistant");
   for (const record of messageRecords) {
     if (record.model && !model) model = record.model;
 
@@ -472,7 +502,7 @@ export async function extractQwenCodeContext(
     if (!text) continue;
 
     messages.push({
-      role: record.type === 'user' ? 'user' : 'assistant',
+      role: record.type === "user" ? "user" : "assistant",
       content: text,
       timestamp: new Date(record.timestamp),
     });

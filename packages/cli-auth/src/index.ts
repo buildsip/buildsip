@@ -1,9 +1,4 @@
-export {
-  deleteSession,
-  findAuthStorePath,
-  findSession,
-  saveSession,
-} from "./auth-store";
+export { deleteSession, findAuthStorePath, findSession, saveSession } from "./auth-store";
 export { findBuildSipHomeDir } from "./find-buildsip-home-dir";
 export type { Session } from "./auth-store";
 export { prepareLogin } from "./prepare-login";

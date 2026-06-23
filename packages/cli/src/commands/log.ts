@@ -41,10 +41,7 @@ export function registerLogCommand(program: Command) {
         const result = parse(JSON.parse(input), options.agent);
 
         if (result.error !== null) {
-          if (
-            "type" in result.error &&
-            result.error.type === "unknown-adapter"
-          ) {
+          if ("type" in result.error && result.error.type === "unknown-adapter") {
             await appendErrorLog({
               type: "unknown_adapter",
               agent: options.agent,
@@ -82,11 +79,7 @@ export function registerLogCommand(program: Command) {
         await mkdir(logsDir, { recursive: true });
 
         const logContent = await readFile(logPath, "utf8").catch((error) => {
-          if (
-            error instanceof Error &&
-            "code" in error &&
-            error.code === "ENOENT"
-          ) {
+          if (error instanceof Error && "code" in error && error.code === "ENOENT") {
             return null;
           }
 
@@ -97,8 +90,7 @@ export function registerLogCommand(program: Command) {
             ? []
             : logContent.split("\n").filter((line) => line.trim().length > 0);
         const lastLine = lines.at(-1);
-        const lastMessage =
-          lastLine === undefined ? null : JSON.parse(lastLine);
+        const lastMessage = lastLine === undefined ? null : JSON.parse(lastLine);
 
         // Duplicate check.
         if (

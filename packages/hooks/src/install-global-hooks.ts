@@ -68,11 +68,7 @@ function createCommandHook(name: Name): CommandHook {
   };
 }
 
-function mergeOpenAiEvent(
-  hooks: JsonObject,
-  eventName: (typeof logEvents)[number],
-  name: Name,
-) {
+function mergeOpenAiEvent(hooks: JsonObject, eventName: (typeof logEvents)[number], name: Name) {
   const groups = Array.isArray(hooks[eventName]) ? hooks[eventName] : [];
   const nextGroups: unknown[] = [];
 
@@ -85,10 +81,7 @@ function mergeOpenAiEvent(
     const nextHooks = group.hooks.filter((hook) => !isBuildSipHook(hook));
     const nextGroup = { ...group, hooks: nextHooks };
 
-    if (
-      nextHooks.length > 0 ||
-      Object.keys(group).some((key) => key !== "hooks")
-    ) {
+    if (nextHooks.length > 0 || Object.keys(group).some((key) => key !== "hooks")) {
       nextGroups.push(nextGroup);
     }
   }
@@ -113,11 +106,7 @@ function mergeOpenAiHooks(config: JsonObject, name: Name) {
   };
 }
 
-function mergeCursorEvent(
-  hooks: JsonObject,
-  eventName: (typeof cursorEvents)[number],
-  name: Name,
-) {
+function mergeCursorEvent(hooks: JsonObject, eventName: (typeof cursorEvents)[number], name: Name) {
   const eventHooks = Array.isArray(hooks[eventName]) ? hooks[eventName] : [];
 
   hooks[eventName] = [

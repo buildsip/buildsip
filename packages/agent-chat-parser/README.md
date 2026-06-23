@@ -7,7 +7,7 @@ This package discovers native session records from supported tools and parses th
 ## API
 
 ```ts
-import { listSessions, parseSession } from '@buildsip/agent-chat-parser';
+import { listSessions, parseSession } from "@buildsip/agent-chat-parser";
 
 const ctx = {
   log: {
@@ -20,7 +20,7 @@ const ctx = {
   },
 };
 
-const sessions = await listSessions(ctx, { source: 'codex', cwd: '/repo', limit: 10 });
+const sessions = await listSessions(ctx, { source: "codex", cwd: "/repo", limit: 10 });
 const conversation = await parseSession(ctx, sessions[0]);
 ```
 

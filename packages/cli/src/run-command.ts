@@ -5,16 +5,10 @@ type RunCommandOptions = {
   verbose?: boolean;
 };
 
-export function runCommand(
-  command: string,
-  args: string[],
-  options?: RunCommandOptions,
-) {
+export function runCommand(command: string, args: string[], options?: RunCommandOptions) {
   return new Promise<string>((resolve, reject) => {
     let output = "";
-    const stdio: StdioOptions = options?.verbose
-      ? "inherit"
-      : ["ignore", "pipe", "pipe"];
+    const stdio: StdioOptions = options?.verbose ? "inherit" : ["ignore", "pipe", "pipe"];
     const child = spawn(command, args, {
       cwd: options?.cwd,
       shell: process.platform === "win32",

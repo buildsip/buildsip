@@ -1,15 +1,20 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { AgentChatParserContext, ParsedAgentConversation, SessionParseOptions, UnifiedSession } from '../types/index';
-import type { CodexMessage, CodexSessionMeta } from '../types/schemas';
-import { findFiles, mapConcurrent } from '../utils/fs-helpers';
-import { readJsonlFile, scanJsonlFile, scanJsonlHead } from '../utils/jsonl';
-import { extractRepo, homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
-import { matchesCwd } from '../utils/slug';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  SessionParseOptions,
+  UnifiedSession,
+} from "../types/index";
+import type { CodexMessage, CodexSessionMeta } from "../types/schemas";
+import { findFiles, mapConcurrent } from "../utils/fs-helpers";
+import { readJsonlFile, scanJsonlFile, scanJsonlHead } from "../utils/jsonl";
+import { extractRepo, homeDir, type MessageDraft, sequenceMessages } from "../utils/parser-helpers";
+import { matchesCwd } from "../utils/slug";
 
-const CODEX_HOME_DIR = process.env.CODEX_HOME || path.join(homeDir(), '.codex');
-const CODEX_SESSIONS_DIR = path.join(CODEX_HOME_DIR, 'sessions');
-const CODEX_ARCHIVED_SESSIONS_DIR = path.join(CODEX_HOME_DIR, 'archived_sessions');
+const CODEX_HOME_DIR = process.env.CODEX_HOME || path.join(homeDir(), ".codex");
+const CODEX_SESSIONS_DIR = path.join(CODEX_HOME_DIR, "sessions");
+const CODEX_ARCHIVED_SESSIONS_DIR = path.join(CODEX_HOME_DIR, "archived_sessions");
 
 const MAX_METADATA_SCAN_BYTES = 1024 * 1024;
 
@@ -19,7 +24,7 @@ const MAX_METADATA_SCAN_BYTES = 1024 * 1024;
 async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> {
   return [CODEX_SESSIONS_DIR, CODEX_ARCHIVED_SESSIONS_DIR].flatMap((dir) =>
     findFiles(ctx, dir, {
-      match: (entry) => entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl'),
+      match: (entry) => entry.name.startsWith("rollout-") && entry.name.endsWith(".jsonl"),
     }),
   );
 }
@@ -27,38 +32,46 @@ async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> 
 /**
  * Parse session metadata and first user message
  */
-async function parseSessionInfo(ctx: AgentChatParserContext, filePath: string): Promise<{
+async function parseSessionInfo(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<{
   meta: CodexSessionMeta | null;
   firstUserMessage: string;
 }> {
   let meta: CodexSessionMeta | null = null;
-  let firstUserMessage = '';
+  let firstUserMessage = "";
 
-  await scanJsonlHead(ctx,
+  await scanJsonlHead(
+    ctx,
     filePath,
     150,
     (parsed) => {
       const msg = parsed as Record<string, unknown>;
 
-      if (msg.type === 'session_meta' && !meta) {
+      if (msg.type === "session_meta" && !meta) {
         meta = msg as unknown as CodexSessionMeta;
       }
 
-      if (!firstUserMessage && msg.type === 'event_msg') {
+      if (!firstUserMessage && msg.type === "event_msg") {
         const payload = msg.payload as Record<string, unknown> | undefined;
-        if (payload?.type === 'user_message') {
-          firstUserMessage = (payload.message as string) || '';
+        if (payload?.type === "user_message") {
+          firstUserMessage = (payload.message as string) || "";
         }
       }
 
-      if (!firstUserMessage && msg.type === 'message' && (msg as Record<string, unknown>).role === 'user') {
-        firstUserMessage = typeof msg.content === 'string' ? (msg.content as string) : '';
+      if (
+        !firstUserMessage &&
+        msg.type === "message" &&
+        (msg as Record<string, unknown>).role === "user"
+      ) {
+        firstUserMessage = typeof msg.content === "string" ? (msg.content as string) : "";
       }
 
       if (meta && firstUserMessage) {
-        return 'stop';
+        return "stop";
       }
-      return 'continue';
+      return "continue";
     },
     { maxBytes: MAX_METADATA_SCAN_BYTES },
   );
@@ -71,7 +84,9 @@ async function parseSessionInfo(ctx: AgentChatParserContext, filePath: string): 
  * Format: rollout-YYYY-MM-DDTHH-MM-SS-<uuid>.jsonl
  */
 function parseFilename(filename: string): { timestamp: Date; id: string } | null {
-  const match = filename.match(/rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(.+)\.jsonl$/);
+  const match = filename.match(
+    /rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(.+)\.jsonl$/,
+  );
   if (!match) return null;
 
   const [, year, month, day, hour, min, sec] = match;
@@ -90,47 +105,55 @@ export async function parseCodexSessions(
   options: SessionParseOptions = {},
 ): Promise<UnifiedSession[]> {
   const files = await findSessionFiles(ctx);
-  const parsedSessions = await mapConcurrent(files, 16, async (filePath): Promise<UnifiedSession | null> => {
-    try {
-      const filename = path.basename(filePath);
-      const parsed = parseFilename(filename);
-      if (!parsed) return null;
+  const parsedSessions = await mapConcurrent(
+    files,
+    16,
+    async (filePath): Promise<UnifiedSession | null> => {
+      try {
+        const filename = path.basename(filePath);
+        const parsed = parseFilename(filename);
+        if (!parsed) return null;
 
-      const { meta, firstUserMessage } = await parseSessionInfo(ctx, filePath);
-      const fileStats = fs.statSync(filePath);
+        const { meta, firstUserMessage } = await parseSessionInfo(ctx, filePath);
+        const fileStats = fs.statSync(filePath);
 
-      const payloadRecord = meta?.payload as Record<string, unknown> | undefined;
-      const cwd = meta?.payload?.cwd || '';
-      if (options.cwd && cwd && !matchesCwd(cwd, options.cwd)) return null;
+        const payloadRecord = meta?.payload as Record<string, unknown> | undefined;
+        const cwd = meta?.payload?.cwd || "";
+        if (options.cwd && cwd && !matchesCwd(cwd, options.cwd)) return null;
 
-      const gitUrl = meta?.payload?.git?.repository_url;
-      const branch = meta?.payload?.git?.branch;
-      const gitSha = meta?.payload?.git?.commit_hash || meta?.payload?.git?.sha;
-      const repo = extractRepo({ gitUrl, cwd });
-      const lastTranscriptTimestamp =
-        fileStats.size <= MAX_METADATA_SCAN_BYTES ? await extractLastCodexTimestamp(ctx, filePath) : undefined;
-      void firstUserMessage;
+        const gitUrl = meta?.payload?.git?.repository_url;
+        const branch = meta?.payload?.git?.branch;
+        const gitSha = meta?.payload?.git?.commit_hash || meta?.payload?.git?.sha;
+        const repo = extractRepo({ gitUrl, cwd });
+        const lastTranscriptTimestamp =
+          fileStats.size <= MAX_METADATA_SCAN_BYTES
+            ? await extractLastCodexTimestamp(ctx, filePath)
+            : undefined;
+        void firstUserMessage;
 
-      return {
-        id: parsed.id,
-        source: 'codex',
-        cwd,
-        repo,
-        branch,
-        gitSha,
-        createdAt:
-          parseValidDate(typeof payloadRecord?.timestamp === 'string' ? payloadRecord.timestamp : undefined) ??
-          parseValidDate(meta?.timestamp) ??
-          parsed.timestamp,
-        updatedAt: lastTranscriptTimestamp ?? fileStats.mtime,
-        originalPath: filePath,
-      };
-    } catch (err) {
-      ctx.log.debug('codex: skipping unparseable session', filePath, err);
-      // Skip files we can't parse
-      return null;
-    }
-  });
+        return {
+          id: parsed.id,
+          source: "codex",
+          cwd,
+          repo,
+          branch,
+          gitSha,
+          createdAt:
+            parseValidDate(
+              typeof payloadRecord?.timestamp === "string" ? payloadRecord.timestamp : undefined,
+            ) ??
+            parseValidDate(meta?.timestamp) ??
+            parsed.timestamp,
+          updatedAt: lastTranscriptTimestamp ?? fileStats.mtime,
+          originalPath: filePath,
+        };
+      } catch (err) {
+        ctx.log.debug("codex: skipping unparseable session", filePath, err);
+        // Skip files we can't parse
+        return null;
+      }
+    },
+  );
 
   const sessionsById = new Map<string, UnifiedSession>();
   for (const nextSession of parsedSessions) {
@@ -141,14 +164,19 @@ export async function parseCodexSessions(
     }
   }
 
-  const sorted = Array.from(sessionsById.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  const sorted = Array.from(sessionsById.values()).sort(
+    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+  );
   return options.limit ? sorted.slice(0, options.limit) : sorted;
 }
 
 /**
  * Read all messages from a Codex session
  */
-async function readAllMessages(ctx: AgentChatParserContext, filePath: string): Promise<CodexMessage[]> {
+async function readAllMessages(
+  ctx: AgentChatParserContext,
+  filePath: string,
+): Promise<CodexMessage[]> {
   return readJsonlFile(ctx, filePath);
 }
 
@@ -167,44 +195,52 @@ export async function extractCodexContext(
   const responseItemEntries: MessageDraft[] = [];
 
   for (const msg of messages) {
-    if (msg.type === 'event_msg') {
+    if (msg.type === "event_msg") {
       const payload = msg.payload;
-      if (payload?.type === 'user_message') {
-        const content = payload.message || msg.message || '';
+      if (payload?.type === "user_message") {
+        const content = payload.message || msg.message || "";
         if (content) {
-          eventMsgEntries.push({ role: 'user', content, timestamp: new Date(msg.timestamp) });
+          eventMsgEntries.push({ role: "user", content, timestamp: new Date(msg.timestamp) });
         }
-      } else if (payload?.type === 'agent_message' || payload?.type === 'assistant_message') {
-        const content = payload?.message || '';
+      } else if (payload?.type === "agent_message" || payload?.type === "assistant_message") {
+        const content = payload?.message || "";
         if (content) {
-          eventMsgEntries.push({ role: 'assistant', content, timestamp: new Date(msg.timestamp) });
+          eventMsgEntries.push({ role: "assistant", content, timestamp: new Date(msg.timestamp) });
         }
       }
-    } else if (msg.type === 'response_item') {
+    } else if (msg.type === "response_item") {
       const payload = msg.payload;
-      if (payload?.role === 'user' && payload.type === 'message') {
+      if (payload?.role === "user" && payload.type === "message") {
         const contentParts = payload.content || [];
         const text = contentParts
-          .filter((c) => c.type === 'input_text' && c.text)
+          .filter((c) => c.type === "input_text" && c.text)
           .map((c) => c.text)
-          .join('\n');
+          .join("\n");
         // Skip system-injected content (AGENTS.md instructions, environment_context, permissions)
         if (
           text &&
-          !text.startsWith('<environment_context>') &&
-          !text.startsWith('<permissions') &&
-          !text.startsWith('# AGENTS.md')
+          !text.startsWith("<environment_context>") &&
+          !text.startsWith("<permissions") &&
+          !text.startsWith("# AGENTS.md")
         ) {
-          responseItemEntries.push({ role: 'user', content: text, timestamp: new Date(msg.timestamp) });
+          responseItemEntries.push({
+            role: "user",
+            content: text,
+            timestamp: new Date(msg.timestamp),
+          });
         }
-      } else if (payload?.role === 'assistant' && payload.type === 'message') {
+      } else if (payload?.role === "assistant" && payload.type === "message") {
         const contentParts = payload.content || [];
         const text = contentParts
-          .filter((c) => (c.type === 'output_text' || c.type === 'text') && c.text)
+          .filter((c) => (c.type === "output_text" || c.type === "text") && c.text)
           .map((c) => c.text)
-          .join('\n');
+          .join("\n");
         if (text) {
-          responseItemEntries.push({ role: 'assistant', content: text, timestamp: new Date(msg.timestamp) });
+          responseItemEntries.push({
+            role: "assistant",
+            content: text,
+            timestamp: new Date(msg.timestamp),
+          });
         }
       }
       // Skip payload.type === 'reasoning' (chain-of-thought, not a message)
@@ -214,7 +250,8 @@ export async function extractCodexContext(
 
   // Prefer response_item entries (newer, richer format) when available; fall back to event_msg
   const hasResponseItems =
-    responseItemEntries.some((m) => m.role === 'user') || responseItemEntries.some((m) => m.role === 'assistant');
+    responseItemEntries.some((m) => m.role === "user") ||
+    responseItemEntries.some((m) => m.role === "assistant");
   const allMessages = hasResponseItems ? responseItemEntries : eventMsgEntries;
 
   return {
@@ -233,12 +270,13 @@ async function extractLastCodexTimestamp(
   filePath: string,
 ): Promise<Date | undefined> {
   let lastTimestamp: Date | undefined;
-  await scanJsonlFile(ctx,
+  await scanJsonlFile(
+    ctx,
     filePath,
     (parsed) => {
       const timestamp = parseValidDate((parsed as { timestamp?: string }).timestamp);
       if (timestamp) lastTimestamp = timestamp;
-      return 'continue';
+      return "continue";
     },
     { maxBytes: MAX_METADATA_SCAN_BYTES },
   );

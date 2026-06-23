@@ -1,8 +1,12 @@
-import * as fs from 'node:fs';
-import { createRequire } from 'node:module';
-import * as path from 'node:path';
-import { z } from 'zod';
-import type { AgentChatParserContext, ParsedAgentConversation, UnifiedSession } from '../types/index';
+import * as fs from "node:fs";
+import { createRequire } from "node:module";
+import * as path from "node:path";
+import { z } from "zod";
+import type {
+  AgentChatParserContext,
+  ParsedAgentConversation,
+  UnifiedSession,
+} from "../types/index";
 import type {
   OpenCodeProject,
   OpenCodeSession,
@@ -10,15 +14,20 @@ import type {
   SqlitePartRow,
   SqliteProjectRow,
   SqliteSessionRow,
-} from '../types/schemas';
+} from "../types/schemas";
 import {
   OpenCodeMessageSchema,
   OpenCodePartSchema,
   OpenCodeProjectSchema,
   OpenCodeSessionSchema,
-} from '../types/schemas';
-import { findFiles, listSubdirectories } from '../utils/fs-helpers';
-import { extractRepoFromCwd, homeDir, type MessageDraft, sequenceMessages } from '../utils/parser-helpers';
+} from "../types/schemas";
+import { findFiles, listSubdirectories } from "../utils/fs-helpers";
+import {
+  extractRepoFromCwd,
+  homeDir,
+  type MessageDraft,
+  sequenceMessages,
+} from "../utils/parser-helpers";
 
 /** Minimal typed interface for node:sqlite DatabaseSync */
 interface SqlitePreparedStatement {
@@ -42,16 +51,18 @@ const SqliteMsgDataSchema = z
   .passthrough();
 
 /** Zod schema for part data blob stored in SQLite data column */
-const SqlitePartDataSchema = z.object({ type: z.string(), text: z.string().optional() }).passthrough();
+const SqlitePartDataSchema = z
+  .object({ type: z.string(), text: z.string().optional() })
+  .passthrough();
 
 function getOpenCodeBaseDir(): string {
   return process.env.XDG_DATA_HOME
-    ? path.join(process.env.XDG_DATA_HOME, 'opencode')
-    : path.join(homeDir(), '.local', 'share', 'opencode');
+    ? path.join(process.env.XDG_DATA_HOME, "opencode")
+    : path.join(homeDir(), ".local", "share", "opencode");
 }
 
 function getOpenCodeStorageDir(): string {
-  return path.join(getOpenCodeBaseDir(), 'storage');
+  return path.join(getOpenCodeBaseDir(), "storage");
 }
 
 function getOpenCodeDbPaths(ctx: AgentChatParserContext): string[] {
@@ -60,7 +71,7 @@ function getOpenCodeDbPaths(ctx: AgentChatParserContext): string[] {
   }
 
   const baseDir = getOpenCodeBaseDir();
-  const defaultDbPath = path.join(baseDir, 'opencode.db');
+  const defaultDbPath = path.join(baseDir, "opencode.db");
   const dbPaths: string[] = [];
   if (fs.existsSync(defaultDbPath)) {
     dbPaths.push(defaultDbPath);
@@ -82,7 +93,7 @@ function getOpenCodeDbPaths(ctx: AgentChatParserContext): string[] {
       }
     }
   } catch (err) {
-    ctx.log.debug('opencode: failed to inspect channel SQLite DB variants', baseDir, err);
+    ctx.log.debug("opencode: failed to inspect channel SQLite DB variants", baseDir, err);
   }
 
   return dbPaths;
@@ -90,8 +101,8 @@ function getOpenCodeDbPaths(ctx: AgentChatParserContext): string[] {
 
 function renderHighValuePart(partData: Record<string, unknown>): { content?: string } {
   switch (partData.type) {
-    case 'text':
-      return { content: typeof partData.text === 'string' ? partData.text : undefined };
+    case "text":
+      return { content: typeof partData.text === "string" ? partData.text : undefined };
     default:
       return {};
   }
@@ -107,15 +118,18 @@ function hasSqliteDb(ctx: AgentChatParserContext): boolean {
 /**
  * Open SQLite database using node:sqlite (built-in)
  */
-function openDb(ctx: AgentChatParserContext, dbPath: string): { db: SqliteDatabase; close: () => void } | null {
+function openDb(
+  ctx: AgentChatParserContext,
+  dbPath: string,
+): { db: SqliteDatabase; close: () => void } | null {
   try {
     // Dynamic import of node:sqlite to avoid issues on older Node versions
     const require = createRequire(import.meta.url);
-    const { DatabaseSync } = require('node:sqlite');
+    const { DatabaseSync } = require("node:sqlite");
     const db = new DatabaseSync(dbPath, { open: true, readOnly: true }) as SqliteDatabase;
     return { db, close: () => db.close() };
   } catch (err) {
-    ctx.log.debug('opencode: failed to open SQLite database', dbPath, err);
+    ctx.log.debug("opencode: failed to open SQLite database", dbPath, err);
     return null;
   }
 }
@@ -124,12 +138,12 @@ function openDb(ctx: AgentChatParserContext, dbPath: string): { db: SqliteDataba
  * Find all OpenCode session files
  */
 async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> {
-  const sessionDir = path.join(getOpenCodeStorageDir(), 'session');
+  const sessionDir = path.join(getOpenCodeStorageDir(), "session");
   const results: string[] = [];
   for (const projectDir of listSubdirectories(ctx, sessionDir)) {
     results.push(
       ...findFiles(ctx, projectDir, {
-        match: (entry) => entry.name.startsWith('ses_') && entry.name.endsWith('.json'),
+        match: (entry) => entry.name.startsWith("ses_") && entry.name.endsWith(".json"),
         recursive: false,
       }),
     );
@@ -142,13 +156,13 @@ async function findSessionFiles(ctx: AgentChatParserContext): Promise<string[]> 
  */
 function parseSessionFile(ctx: AgentChatParserContext, filePath: string): OpenCodeSession | null {
   try {
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = fs.readFileSync(filePath, "utf8");
     const result = OpenCodeSessionSchema.safeParse(JSON.parse(content));
     if (result.success) return result.data;
-    ctx.log.debug('opencode: session validation failed', filePath, result.error.message);
+    ctx.log.debug("opencode: session validation failed", filePath, result.error.message);
     return null;
   } catch (err) {
-    ctx.log.debug('opencode: failed to parse session file', filePath, err);
+    ctx.log.debug("opencode: failed to parse session file", filePath, err);
     return null;
   }
 }
@@ -157,16 +171,16 @@ function parseSessionFile(ctx: AgentChatParserContext, filePath: string): OpenCo
  * Load project info to get worktree/cwd
  */
 function loadProjectInfo(ctx: AgentChatParserContext, projectId: string): OpenCodeProject | null {
-  const projectFile = path.join(getOpenCodeStorageDir(), 'project', `${projectId}.json`);
+  const projectFile = path.join(getOpenCodeStorageDir(), "project", `${projectId}.json`);
   try {
     if (fs.existsSync(projectFile)) {
-      const content = fs.readFileSync(projectFile, 'utf8');
+      const content = fs.readFileSync(projectFile, "utf8");
       const result = OpenCodeProjectSchema.safeParse(JSON.parse(content));
       if (result.success) return result.data;
-      ctx.log.debug('opencode: project validation failed', projectFile, result.error.message);
+      ctx.log.debug("opencode: project validation failed", projectFile, result.error.message);
     }
   } catch (err) {
-    ctx.log.debug('opencode: failed to parse project file', projectFile, err);
+    ctx.log.debug("opencode: failed to parse project file", projectFile, err);
   }
   return null;
 }
@@ -175,41 +189,41 @@ function loadProjectInfo(ctx: AgentChatParserContext, projectId: string): OpenCo
  * Get first user message from session messages
  */
 function getFirstUserMessage(ctx: AgentChatParserContext, sessionId: string): string {
-  const messageDir = path.join(getOpenCodeStorageDir(), 'message', sessionId);
-  if (!fs.existsSync(messageDir)) return '';
+  const messageDir = path.join(getOpenCodeStorageDir(), "message", sessionId);
+  if (!fs.existsSync(messageDir)) return "";
 
   try {
     const messageFiles = fs
       .readdirSync(messageDir)
-      .filter((f) => f.startsWith('msg_') && f.endsWith('.json'))
+      .filter((f) => f.startsWith("msg_") && f.endsWith(".json"))
       .sort(); // Sort to get chronological order
 
     for (const msgFile of messageFiles) {
       const msgPath = path.join(messageDir, msgFile);
-      const msgContent = fs.readFileSync(msgPath, 'utf8');
+      const msgContent = fs.readFileSync(msgPath, "utf8");
       const msgResult = OpenCodeMessageSchema.safeParse(JSON.parse(msgContent));
       if (!msgResult.success) continue;
       const msg = msgResult.data;
 
-      if (msg.role === 'user') {
+      if (msg.role === "user") {
         // Get the message text from parts
         const messageId = msg.id;
-        const partDir = path.join(getOpenCodeStorageDir(), 'part', messageId);
+        const partDir = path.join(getOpenCodeStorageDir(), "part", messageId);
 
         if (fs.existsSync(partDir)) {
           const partFiles = fs
             .readdirSync(partDir)
-            .filter((f) => f.startsWith('prt_') && f.endsWith('.json'))
+            .filter((f) => f.startsWith("prt_") && f.endsWith(".json"))
             .sort();
 
           for (const partFile of partFiles) {
             const partPath = path.join(partDir, partFile);
-            const partContent = fs.readFileSync(partPath, 'utf8');
+            const partContent = fs.readFileSync(partPath, "utf8");
             const partResult = OpenCodePartSchema.safeParse(JSON.parse(partContent));
             if (!partResult.success) continue;
             const part = partResult.data;
 
-            if (part.type === 'text' && part.text) {
+            if (part.type === "text" && part.text) {
               return part.text;
             }
           }
@@ -217,16 +231,18 @@ function getFirstUserMessage(ctx: AgentChatParserContext, sessionId: string): st
       }
     }
   } catch (err) {
-    ctx.log.debug('opencode: failed to read messages for session', sessionId, err);
+    ctx.log.debug("opencode: failed to read messages for session", sessionId, err);
   }
 
-  return '';
+  return "";
 }
 
 /**
  * Parse all OpenCode sessions - SQLite first, then JSON fallback
  */
-export async function parseOpenCodeSessions(ctx: AgentChatParserContext): Promise<UnifiedSession[]> {
+export async function parseOpenCodeSessions(
+  ctx: AgentChatParserContext,
+): Promise<UnifiedSession[]> {
   // Try SQLite database first (newer OpenCode versions)
   if (hasSqliteDb(ctx)) {
     const sessions = parseSessionsFromSqlite(ctx);
@@ -251,20 +267,22 @@ function parseSessionsFromSqlite(ctx: AgentChatParserContext): UnifiedSession[] 
     try {
       const rows = db
         .prepare(
-          'SELECT id, project_id, slug, directory, title, version, time_created, time_updated FROM session ORDER BY time_updated DESC',
+          "SELECT id, project_id, slug, directory, title, version, time_created, time_updated FROM session ORDER BY time_updated DESC",
         )
         .all() as SqliteSessionRow[];
 
       // Build project lookup
-      const projectRows = db.prepare('SELECT id, worktree FROM project').all() as SqliteProjectRow[];
+      const projectRows = db
+        .prepare("SELECT id, worktree FROM project")
+        .all() as SqliteProjectRow[];
       const projectMap = new Map(projectRows.map((p: SqliteProjectRow) => [p.id, p.worktree]));
 
       for (const row of rows) {
-        const cwd = row.directory || projectMap.get(row.project_id) || '';
+        const cwd = row.directory || projectMap.get(row.project_id) || "";
 
         const nextSession: UnifiedSession = {
           id: row.id,
-          source: 'opencode',
+          source: "opencode",
           cwd,
           repo: extractRepoFromCwd(cwd),
           createdAt: new Date(row.time_created),
@@ -279,13 +297,15 @@ function parseSessionsFromSqlite(ctx: AgentChatParserContext): UnifiedSession[] 
         }
       }
     } catch (err) {
-      ctx.log.debug('opencode: SQLite session query failed', dbPath, err);
+      ctx.log.debug("opencode: SQLite session query failed", dbPath, err);
     } finally {
       close();
     }
   }
 
-  return Array.from(sessionsById.values()).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  return Array.from(sessionsById.values()).sort(
+    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+  );
 }
 
 /**
@@ -302,14 +322,14 @@ async function parseSessionsFromJson(ctx: AgentChatParserContext): Promise<Unifi
 
       // Get project info for worktree
       const project = loadProjectInfo(ctx, session.projectID);
-      const cwd = session.directory || project?.worktree || '';
+      const cwd = session.directory || project?.worktree || "";
 
       const firstUserMessage = getFirstUserMessage(ctx, session.id);
       if (!session.title && !firstUserMessage) continue;
 
       sessions.push({
         id: session.id,
-        source: 'opencode',
+        source: "opencode",
         cwd,
         repo: extractRepoFromCwd(cwd),
         createdAt: new Date(session.time.created),
@@ -317,7 +337,7 @@ async function parseSessionsFromJson(ctx: AgentChatParserContext): Promise<Unifi
         originalPath: filePath,
       });
     } catch (err) {
-      ctx.log.debug('opencode: skipping unparseable JSON session', filePath, err);
+      ctx.log.debug("opencode: skipping unparseable JSON session", filePath, err);
       // Skip files we can't parse
     }
   }
@@ -351,7 +371,7 @@ function readMessagesFromSqlite(ctx: AgentChatParserContext, sessionId: string):
     try {
       const msgRows = db
         .prepare(
-          'SELECT id, session_id, time_created, data FROM message WHERE session_id = ? ORDER BY time_created ASC',
+          "SELECT id, session_id, time_created, data FROM message WHERE session_id = ? ORDER BY time_created ASC",
         )
         .all(sessionId) as SqliteMessageRow[];
       if (msgRows.length === 0) continue;
@@ -361,10 +381,11 @@ function readMessagesFromSqlite(ctx: AgentChatParserContext, sessionId: string):
       for (const msgRow of msgRows) {
         const msgDataResult = SqliteMsgDataSchema.safeParse(JSON.parse(msgRow.data));
         if (!msgDataResult.success) continue;
-        const role: 'user' | 'assistant' = msgDataResult.data.role === 'user' ? 'user' : 'assistant';
+        const role: "user" | "assistant" =
+          msgDataResult.data.role === "user" ? "user" : "assistant";
 
         const partRows = db
-          .prepare('SELECT data FROM part WHERE message_id = ? ORDER BY time_created ASC, id ASC')
+          .prepare("SELECT data FROM part WHERE message_id = ? ORDER BY time_created ASC, id ASC")
           .all(msgRow.id) as SqlitePartRow[];
 
         const contentParts: string[] = [];
@@ -373,7 +394,7 @@ function readMessagesFromSqlite(ctx: AgentChatParserContext, sessionId: string):
           try {
             rawPartData = JSON.parse(partRow.data);
           } catch (err) {
-            ctx.log.debug('opencode: failed to parse SQLite part JSON', msgRow.id, err);
+            ctx.log.debug("opencode: failed to parse SQLite part JSON", msgRow.id, err);
             continue;
           }
 
@@ -383,7 +404,7 @@ function readMessagesFromSqlite(ctx: AgentChatParserContext, sessionId: string):
           if (rendered.content) contentParts.push(rendered.content);
         }
 
-        const content = contentParts.join('\n').trim();
+        const content = contentParts.join("\n").trim();
         if (content) {
           messages.push({
             role,
@@ -395,7 +416,7 @@ function readMessagesFromSqlite(ctx: AgentChatParserContext, sessionId: string):
 
       return messages;
     } catch (err) {
-      ctx.log.debug('opencode: SQLite message query failed for session', dbPath, sessionId, err);
+      ctx.log.debug("opencode: SQLite message query failed for session", dbPath, sessionId, err);
     } finally {
       close();
     }
@@ -409,36 +430,36 @@ function readMessagesFromSqlite(ctx: AgentChatParserContext, sessionId: string):
  */
 function readMessagesFromJson(ctx: AgentChatParserContext, sessionId: string): MessageDraft[] {
   const messages: MessageDraft[] = [];
-  const messageDir = path.join(getOpenCodeStorageDir(), 'message', sessionId);
+  const messageDir = path.join(getOpenCodeStorageDir(), "message", sessionId);
 
   if (!fs.existsSync(messageDir)) return messages;
 
   try {
     const messageFiles = fs
       .readdirSync(messageDir)
-      .filter((f) => f.startsWith('msg_') && f.endsWith('.json'))
+      .filter((f) => f.startsWith("msg_") && f.endsWith(".json"))
       .sort();
 
     for (const msgFile of messageFiles) {
       const msgPath = path.join(messageDir, msgFile);
-      const msgContent = fs.readFileSync(msgPath, 'utf8');
+      const msgContent = fs.readFileSync(msgPath, "utf8");
       const msgResult = OpenCodeMessageSchema.safeParse(JSON.parse(msgContent));
       if (!msgResult.success) continue;
       const msg = msgResult.data;
 
       // Get message text from parts
-      const partDir = path.join(getOpenCodeStorageDir(), 'part', msg.id);
+      const partDir = path.join(getOpenCodeStorageDir(), "part", msg.id);
       const contentParts: string[] = [];
 
       if (fs.existsSync(partDir)) {
         const partFiles = fs
           .readdirSync(partDir)
-          .filter((f) => f.startsWith('prt_') && f.endsWith('.json'))
+          .filter((f) => f.startsWith("prt_") && f.endsWith(".json"))
           .sort();
 
         for (const partFile of partFiles) {
           const partPath = path.join(partDir, partFile);
-          const partContent = fs.readFileSync(partPath, 'utf8');
+          const partContent = fs.readFileSync(partPath, "utf8");
           const partResult = OpenCodePartSchema.safeParse(JSON.parse(partContent));
           if (!partResult.success) continue;
           const rendered = renderHighValuePart(partResult.data);
@@ -446,17 +467,17 @@ function readMessagesFromJson(ctx: AgentChatParserContext, sessionId: string): M
         }
       }
 
-      const content = contentParts.join('\n').trim();
+      const content = contentParts.join("\n").trim();
       if (content) {
         messages.push({
-          role: msg.role === 'user' ? 'user' : 'assistant',
+          role: msg.role === "user" ? "user" : "assistant",
           content,
           timestamp: new Date(msg.time.created),
         });
       }
     }
   } catch (err) {
-    ctx.log.debug('opencode: failed to read JSON messages for session', sessionId, err);
+    ctx.log.debug("opencode: failed to read JSON messages for session", sessionId, err);
     // Ignore errors
   }
 
