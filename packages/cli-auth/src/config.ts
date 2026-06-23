@@ -5,7 +5,7 @@ export const config = {
   },
   loginTimeoutMs: 5 * 60 * 1000, // 5 minutes
   get oauthClientId() {
-    return process.env.BUILDSIP_OAUTH_CLIENT_ID ?? "bb41cd35-7de0-461e-9d9b-4bc6a65c46ee";
+    return process.env.OAUTH_CLIENT_ID ?? "07ab6d95-c832-4361-ba75-f8c8a3a486d3";
   },
   redirectUri: "http://127.0.0.1:48271/callback",
   refreshWindowMs: 60 * 1000, // 1 minute

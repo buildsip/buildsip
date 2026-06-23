@@ -38,6 +38,7 @@ buildsip cleanup temp-abc123def456 # Delete the temp folder after drafting.
 
 ```bash
 BUILDSIP_INSTALL_MODE=link
+OAUTH_CLIENT_ID=...
 ```
 
 If you run the web app locally, add:
