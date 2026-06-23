@@ -1,10 +1,8 @@
 import { cancel } from "@clack/prompts";
 import type { Command } from "commander";
 import { log } from "../log";
-import {
-  prepareTempLogs,
-  type PrepareTempLogsOptions,
-} from "../prepare-temp-logs";
+import { prepareTempLogs } from "../prepare-temp-logs";
+import { PrepareTempLogsOptions } from "../find-time-window";
 
 export function registerPrepareCommand(program: Command) {
   program
