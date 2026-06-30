@@ -7,9 +7,11 @@ description: Create a work story.
 
 2. From now on, only read `*.jsonl` files inside the returned `tempLogsDir`. Do not use unfiltered BuildSip logs.
 
-3. Write one Markdown file per story inside the returned `tempDir`. Use filename slugs based on each title, such as `title-of-story-1.md`, `title-of-story-2.md`, and so on. Follow `DRAFT.md`.
+3. Spawn a subagent with these instructions:
 
-   If nothing clears the **substance bar**, skip to the cleanup step.
+> Read `*.jsonl` files inside the returned `tempLogsDir`. Write one Markdown file per story inside the returned `tempDir`. Use filename slugs based on each title, such as `title-of-story-1.md`, `title-of-story-2.md`, and so on. Follow `DRAFT.md`. If nothing clears the **substance bar**, skip to the cleanup step. Here are the paths to the folders mentioned prior:...
+
+Make sure you feed it the paths from the prepare command.
 
 4. Spawn a subagent to audit the story files with this instruction:
 
