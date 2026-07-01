@@ -9,17 +9,17 @@ description: Create a work story.
 
 3. Spawn a subagent with these instructions:
 
-> Read `*.jsonl` files inside the returned `tempLogsDir`. Write one Markdown file per story inside the returned `tempDir`. Use filename slugs based on each title, such as `title-of-story-1.md`, `title-of-story-2.md`, and so on. Follow `DRAFT.md`. If nothing clears the **substance bar**, skip to the cleanup step. Here are the paths to the folders mentioned prior:...
+> Read `*.jsonl` files inside the returned `tempLogsDir`. Write one Markdown file per story inside the returned `tempDir`. Use filename slugs based on each title, such as `title-of-story-1.md`, `title-of-story-2.md`, and so on. Follow `STORY.md`. If nothing clears the **substance bar**, skip to the cleanup step. Here are the paths to the folders mentioned prior:...
 
 Make sure you feed it the paths from the prepare command.
 
 4. Spawn a subagent to audit the story files with this instruction:
 
-> Audit whether the BuildSip story files respect the rules from the adjacent `DRAFT.md`. Return findings as normal agent output. Do **not** rewrite the files. If nothing is wrong, say so clearly.
+> Audit whether the BuildSip story files respect the rules from the adjacent `STORY.md`. Return findings as normal agent output. Do **not** rewrite the files. If nothing is wrong, say so clearly.
 
 If the audit fails, skip to cleanup.
 
-5. Revise the story files if the audit returned findings. Follow `DRAFT.md` rules.
+5. Revise the story files if the audit returned findings. Follow `STORY.md` rules.
 
 6. Run `pnpm buildsip upload <temp from prepare JSON> --until <until from prepare JSON>` to upload the story Markdown files.
 
