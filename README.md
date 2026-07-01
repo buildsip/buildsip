@@ -1,5 +1,10 @@
 # BuildSip CLI
 
+![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
+
+> [!WARNING]
+> **BuildSip is alpha software.** Releases may introduce breaking changes without notice. The web app supports only the latest CLI version; compatibility with earlier versions is not guaranteed. Keeping BuildSip up to date is strongly recommended.
+
 ## Set up
 
 1. Initialize the CLI
