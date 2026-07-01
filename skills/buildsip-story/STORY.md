@@ -59,11 +59,21 @@ Name the main tool, and spell out the effect of the change too if it isn't obvio
   - "Exposing Supabase data to AI agents via an MCP server"
 - GOOD EXAMPLE (obvious effect is skipped): "Implementing OAuth with Neon"
 
+### Tags
+
+List the tools and packages that are central to this story's technical insight — the ones a reader would search for if they had this exact problem. Don't tag something just because it's in the codebase or `package.json`. Use the official name as listed on the tool's official website (GOOD EXAMPLE: "Next.js", BAD EXAMPLES: "next-js", "NextJS", "Next js").
+
+Examples: Vercel, Next.js, React, Zod, Supabase, Tailwind CSS, etc.
+
 ## Story file format
 
 ```markdown
 ---
 title: Story title
+tags:
+	- Tag 1
+	- Tag 2
+  - ...
 ---
 
 ## Problem
@@ -80,6 +90,8 @@ title: Story title
 ```markdown
 ---
 title: Making React Native's `TextInput` feel native
+tags:
+  - React Native
 ---
 
 ## Problem
