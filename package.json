@@ -9,6 +9,7 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
+    "release": "node scripts/release.mjs",
     "lint": "oxlint --report-unused-disable-directives",
     "lint:fix": "oxlint --fix --fix-suggestions",
     "format": "oxfmt --write \"**/*.{ts,tsx,md}\"",
