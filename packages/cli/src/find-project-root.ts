@@ -1,8 +1,12 @@
 import { stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
-export async function findProjectRoot(startDirectory: string) {
-  for (let currentDirectory = startDirectory; ; currentDirectory = dirname(currentDirectory)) {
+export async function findGitProjectRoot(startDirectory: string) {
+  for (
+    let currentDirectory = resolve(startDirectory);
+    ;
+    currentDirectory = dirname(currentDirectory)
+  ) {
     try {
       await stat(join(currentDirectory, ".git"));
       return currentDirectory;
@@ -15,7 +19,11 @@ export async function findProjectRoot(startDirectory: string) {
     const parentDirectory = dirname(currentDirectory);
 
     if (parentDirectory === currentDirectory) {
-      return startDirectory;
+      return null;
     }
   }
+}
+
+export async function findProjectRoot(startDirectory: string) {
+  return (await findGitProjectRoot(startDirectory)) ?? resolve(startDirectory);
 }

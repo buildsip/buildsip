@@ -4,7 +4,7 @@ import type { Command } from "commander";
 import { prettifyError, ZodError } from "zod";
 import { parse } from "@buildsip/hooks";
 import { appendErrorLog } from "../append-error-log";
-import { findProjectStore } from "../buildsip-store";
+import { findBuildSipStore } from "../build-sip-store";
 
 type LogCommandOptions = {
   agent?: string;
@@ -65,7 +65,7 @@ export function registerLogCommand(program: Command) {
         }
 
         const event = result.data;
-        const { logsDir } = await findProjectStore();
+        const { logsDir } = await findBuildSipStore();
         // Prefixing to avoid id collisions with other agents.
         const logPath = join(logsDir, `${event.name}_${event.sessionId}.jsonl`);
         const entry = {

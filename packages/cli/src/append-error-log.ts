@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { findProjectStore } from "./buildsip-store";
+import { findBuildSipStore } from "./build-sip-store";
 
 type ErrorLogEntry = {
   agent?: string;
@@ -11,7 +11,7 @@ type ErrorLogEntry = {
 
 export async function appendErrorLog(params: { agent?: string; type: string; message: string }) {
   try {
-    const { errorsPath } = await findProjectStore();
+    const { errorsPath } = await findBuildSipStore();
     const entry: ErrorLogEntry = {
       at: new Date().toISOString(),
       type: params.type,

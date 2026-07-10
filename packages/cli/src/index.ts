@@ -2,6 +2,7 @@
 
 import { cancel } from "@clack/prompts";
 import { Command } from "commander";
+import { registerAliasCommand } from "./commands/alias";
 import { registerInitCommand } from "./commands/init";
 import { registerLoginCommand } from "./commands/login";
 import { registerLogCommand } from "./commands/log";
@@ -28,6 +29,7 @@ program.hook("preAction", (command) => {
   log.initialize({ debug: Boolean(command.optsWithGlobals().debug) });
 });
 
+registerAliasCommand(program);
 registerInitCommand(program);
 registerLoginCommand(program);
 registerLogCommand(program);
