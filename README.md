@@ -27,6 +27,10 @@ Commands:
 buildsip whoami
 buildsip paths # Show local BuildSip storage paths
 buildsip logout
+buildsip alias add /old/project/path # Include conversations from an old project path
+buildsip alias list
+buildsip alias list --all
+buildsip alias remove /old/project/path
 buildsip prepare # Prepare logs for drafting; defaults to last 7 days
 buildsip prepare --hours 4
 buildsip prepare --days 14

@@ -12,7 +12,7 @@
     "lint": "oxlint --report-unused-disable-directives",
     "lint:fix": "oxlint --fix --fix-suggestions",
     "format": "oxfmt --write \"**/*.{ts,tsx,md}\"",
-    "test": "pnpm --filter @buildsip/agent-chat-parser test",
+    "test": "pnpm --filter @buildsip/agent-chat-parser test && pnpm --dir packages/cli test",
     "typecheck": "pnpm -r --parallel typecheck"
   },
   "devDependencies": {

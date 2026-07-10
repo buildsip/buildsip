@@ -1,8 +1,9 @@
 import { cancel } from "@clack/prompts";
 import { findAuthStorePath, findBuildSipHomeDir } from "@buildsip/cli-auth";
 import type { Command } from "commander";
+import { findConfigPath } from "../alias";
+import { findBuildSipStore } from "../build-sip-store";
 import { log } from "../log";
-import { findProjectStore } from "../buildsip-store";
 
 export function registerPathsCommand(program: Command) {
   program
@@ -10,14 +11,15 @@ export function registerPathsCommand(program: Command) {
     .description("Show local BuildSip storage paths.")
     .action(async () => {
       try {
-        const projectStore = await findProjectStore();
+        const buildSipStore = await findBuildSipStore();
 
         process.stdout.write(
           `${JSON.stringify(
             {
               homeDir: findBuildSipHomeDir(),
               authStorePath: findAuthStorePath(),
-              projectStore,
+              configPath: findConfigPath(),
+              buildSipStore,
             },
             null,
             2,

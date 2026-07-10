@@ -7,7 +7,9 @@ import {
   type Message,
   type UnifiedSession,
 } from "@buildsip/agent-chat-parser";
-import { findProjectStore } from "./buildsip-store";
+import { findAliases, readConfig } from "./alias";
+import { buildSipStoreFromRoot } from "./build-sip-store";
+import { findGitProjectRoot, findProjectRoot } from "./find-project-root";
 import { makeTempFolder } from "./make-temp-folder";
 import { findTimeWindow, PrepareTempLogsOptions } from "./find-time-window";
 
@@ -19,6 +21,8 @@ export type PrepareTempLogsResult = {
   localAgentSessionsRead: number;
   localAgentSessionsWritten: number;
   logsDir: string;
+  projectRoot: string;
+  aliases: string[];
   since: string;
   temp: string;
   tempDir: string;
@@ -40,29 +44,19 @@ type PreparedLogFile = {
 };
 
 type TempLogLine = {
-  cwd: string[];
   role: "user" | "assistant";
   content: string;
   timestamp: string;
 };
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
 
 function normalizeBuildsipLogLine(message: unknown): TempLogLine {
   if (typeof message !== "object" || message === null) {
     throw new Error("BuildSip log line must be an object.");
   }
 
-  const cwd = "cwd" in message ? message.cwd : undefined;
   const role = "role" in message ? message.role : undefined;
   const content = "content" in message ? message.content : undefined;
   const timestamp = "timestamp" in message ? message.timestamp : undefined;
-
-  if (!isStringArray(cwd)) {
-    throw new Error("BuildSip log line is missing cwd.");
-  }
 
   if (role !== "user" && role !== "assistant") {
     throw new Error("BuildSip log line is missing role.");
@@ -83,14 +77,14 @@ function normalizeBuildsipLogLine(message: unknown): TempLogLine {
   }
 
   return {
-    cwd,
     role,
     content,
     timestamp: date.toISOString(),
   };
 }
 
-function isLogLineInWindow(message: TempLogLine, since: Date, until: Date) {
+function isLogLineInWindow(input: { message: TempLogLine; since: Date; until: Date }) {
+  const { message, since, until } = input;
   const timestamp = new Date(message.timestamp);
 
   return timestamp >= since && timestamp < until;
@@ -111,7 +105,8 @@ function isSessionInProject(session: UnifiedSession, projectRoot: string) {
   return cwd === root || cwd.startsWith(`${root}${sep}`);
 }
 
-function isSessionInWindow(session: UnifiedSession, since: Date, until: Date) {
+function isSessionInWindow(input: { session: UnifiedSession; since: Date; until: Date }) {
+  const { session, since, until } = input;
   return session.createdAt < until && session.updatedAt >= since;
 }
 
@@ -131,7 +126,6 @@ function normalizeLocalMessage(session: UnifiedSession, message: Message): TempL
   }
 
   return {
-    cwd: [session.cwd],
     role: message.role,
     content: message.content,
     timestamp: timestamp.toISOString(),
@@ -167,13 +161,16 @@ async function prepareLogFile({
     .filter((line) => line.trim().length > 0)
     .map((line) => normalizeBuildsipLogLine(JSON.parse(line) as unknown));
 
-  if (!messages.some((message) => isLogLineInWindow(message, since, until))) {
+  if (!messages.some((message) => isLogLineInWindow({ message, since, until }))) {
     return {
       sessionsRead: 1,
       sessionsWritten: 0,
     };
   }
 
+  // Prepared logs are read directly by the story-writing agent. Keep cwd in raw
+  // hook logs for filtering/debugging, but strip it from the temp logs so alias
+  // roots still read as one project and absolute paths do not leak into stories.
   await writeFile(
     join(tempLogsDir, fileName),
     `${messages.map((message) => JSON.stringify(message)).join("\n")}\n`,
@@ -186,11 +183,56 @@ async function prepareLogFile({
   };
 }
 
+async function prepareBuildsipLogFiles(input: {
+  projectRoots: string[];
+  since: Date;
+  tempLogsDir: string;
+  until: Date;
+}) {
+  let sessionsRead = 0;
+  let sessionsWritten = 0;
+  const fileNames = new Set<string>();
+
+  // Keep discovery sequential so current-root logs are registered before alias logs.
+  // Current-project hook logs win over alias hook logs in case of duplicates.
+  for (const projectRoot of input.projectRoots) {
+    const logsDir = buildSipStoreFromRoot(projectRoot).logsDir;
+
+    for (const fileName of await readLogFileNames(logsDir)) {
+      if (fileNames.has(fileName)) {
+        continue;
+      }
+
+      fileNames.add(fileName);
+      const preparedFile = await prepareLogFile({
+        fileName,
+        logsDir,
+        since: input.since,
+        tempLogsDir: input.tempLogsDir,
+        until: input.until,
+      });
+
+      sessionsRead += preparedFile.sessionsRead;
+      sessionsWritten += preparedFile.sessionsWritten;
+    }
+  }
+
+  return {
+    fileNames,
+    sessionsRead,
+    sessionsWritten,
+  };
+}
+
+/**
+ * Generates prepared logs from locally stored sessions by agents like
+ * Codex, Cursor, Claude Code.
+ */
 async function prepareLocalAgentSessions(
   ctx: PrepareTempLogsContext,
   input: {
     buildsipFileNames: Set<string>;
-    projectRoot: string;
+    projectRoots: string[];
     since: Date;
     tempLogsDir: string;
     until: Date;
@@ -199,25 +241,52 @@ async function prepareLocalAgentSessions(
   let sessionsRead = 0;
   let sessionsWritten = 0;
   const writtenFileNames = new Set<string>();
-  const sessions = await listSessions(ctx, { cwd: input.projectRoot });
+  const sessionsByKey = new Map<string, { rootIndex: number; session: UnifiedSession }>();
 
-  for (const session of sessions) {
-    if (
-      !isSessionInProject(session, input.projectRoot) ||
-      !isSessionInWindow(session, input.since, input.until)
-    ) {
-      continue;
+  for (const [rootIndex, projectRoot] of input.projectRoots.entries()) {
+    const sessions = await listSessions(ctx, { cwd: projectRoot });
+
+    for (const session of sessions) {
+      if (
+        !isSessionInProject(session, projectRoot) ||
+        !isSessionInWindow({ session, since: input.since, until: input.until })
+      ) {
+        continue;
+      }
+
+      const key = `${session.source}:${session.id}`;
+      const existing = sessionsByKey.get(key);
+      const samePriority =
+        existing &&
+        (existing.rootIndex === rootIndex || (existing.rootIndex !== 0 && rootIndex !== 0));
+
+      // Searching every root separately can return the same agent session more
+      // than once. For example, an agent may store session "abc" under both
+      // /old-app and /app after a folder rename. It can also happen if the git
+      // root changes: /archive/app may be an old alias while the current root
+      // is /archive/app/frontend, causing a frontend session to match both
+      // searches. Treat the agent source + session id as its identity. Prefer
+      // the copy found through the current root; if only aliases found it, use
+      // the copy with the newest metadata.
+      if (
+        !existing ||
+        (rootIndex === 0 && existing.rootIndex !== 0) ||
+        (samePriority && session.updatedAt > existing.session.updatedAt)
+      ) {
+        sessionsByKey.set(key, { rootIndex, session });
+      }
     }
+  }
 
+  for (const { session } of sessionsByKey.values()) {
     const fileName = sessionFileName(session);
 
     if (input.buildsipFileNames.has(fileName) || writtenFileNames.has(fileName)) {
       continue;
     }
 
-    sessionsRead++;
-
     try {
+      sessionsRead++;
       const parsed = await parseSession(ctx, session);
       const messages = parsed.messages
         .map((message) => normalizeLocalMessage(parsed.session, message))
@@ -250,13 +319,21 @@ export async function prepareTempLogs(
   ctx: PrepareTempLogsContext,
   options: PrepareTempLogsOptions = {},
 ): Promise<PrepareTempLogsResult> {
-  const projectStore = await findProjectStore();
-  const logsDir = projectStore.logsDir;
+  const projectRoot = await findProjectRoot(process.cwd());
+  const buildSipStore = buildSipStoreFromRoot(projectRoot);
+  const logsDir = buildSipStore.logsDir;
   const { temp, tempDir, tempLogsDir } = await makeTempFolder();
   const { since, until } = findTimeWindow(options);
+  const gitProjectRoot = await findGitProjectRoot(process.cwd());
+  const aliases = gitProjectRoot
+    ? findAliases({ config: await readConfig(), root: projectRoot })
+    : [];
+  const projectRoots = [projectRoot, ...aliases];
 
   const result = {
     logsDir,
+    projectRoot,
+    aliases,
     temp,
     tempDir,
     tempLogsDir,
@@ -264,27 +341,16 @@ export async function prepareTempLogs(
     until: until.toISOString(),
   };
 
-  let buildsipSessionsRead = 0;
-  let buildsipSessionsWritten = 0;
-  const fileNames = await readLogFileNames(logsDir);
-  const buildsipFileNames = new Set(fileNames);
-
-  for (const fileName of fileNames) {
-    const preparedFile = await prepareLogFile({
-      fileName,
-      logsDir,
-      since,
-      tempLogsDir,
-      until,
-    });
-
-    buildsipSessionsRead += preparedFile.sessionsRead;
-    buildsipSessionsWritten += preparedFile.sessionsWritten;
-  }
+  const buildsipLogs = await prepareBuildsipLogFiles({
+    projectRoots,
+    since,
+    tempLogsDir,
+    until,
+  });
 
   const localAgentSessions = await prepareLocalAgentSessions(ctx, {
-    buildsipFileNames,
-    projectRoot: projectStore.projectRoot,
+    buildsipFileNames: buildsipLogs.fileNames,
+    projectRoots,
     since,
     tempLogsDir,
     until,
@@ -292,8 +358,8 @@ export async function prepareTempLogs(
 
   return {
     ...result,
-    buildsipSessionsRead,
-    buildsipSessionsWritten,
+    buildsipSessionsRead: buildsipLogs.sessionsRead,
+    buildsipSessionsWritten: buildsipLogs.sessionsWritten,
     localAgentSessionsRead: localAgentSessions.sessionsRead,
     localAgentSessionsWritten: localAgentSessions.sessionsWritten,
   };

@@ -28,6 +28,7 @@
     "buildsip": "pnpm build && node ./dist/index.js",
     "prepack": "pnpm build && node scripts/readme.mjs copy",
     "postpack": "node scripts/readme.mjs clean",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
@@ -49,6 +50,7 @@
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^25.9.1",
     "esbuild": "^0.28.0",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "vitest": "^4.0.18"
   }
 }
