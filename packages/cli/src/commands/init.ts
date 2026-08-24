@@ -70,20 +70,20 @@ export function registerInitCommand(program: Command) {
             cwd: packageRoot,
             verbose: options.verbose,
           });
-          progress.stop(`Installed the local ${pc.greenBright("buildsip")} CLI.`);
+          progress.stop(`${pc.greenBright("buildsip")} CLI installed.`);
         } else {
           progress.start(`Installing ${pc.greenBright("buildsip")} CLI.`);
           await runCommand("npm", ["i", "-g", "buildsip@latest"], {
             verbose: options.verbose,
           });
-          progress.stop(`Installed ${pc.greenBright("buildsip")} CLI.`);
+          progress.stop(`${pc.greenBright("buildsip")} CLI installed.`);
         }
 
-        progress.start("Installing global hooks.");
+        progress.start("Adding agent hooks.");
         await installGlobalHooks(names);
-        progress.stop("Installed 2 global hooks.");
+        progress.stop("Agent hooks added.");
 
-        progress.start(`Installing the ${pc.greenBright("/buildsip-story")} global skill.`);
+        progress.start("Adding story skill.");
         await installSkill({
           names,
           source:
@@ -93,7 +93,7 @@ export function registerInitCommand(program: Command) {
           verbose: options.verbose,
         });
 
-        progress.stop(`Installed the ${pc.greenBright("/buildsip-story")} global skill.`);
+        progress.stop("Story skill added.");
 
         const shouldLogin = await confirm({
           message: "Sign in to Buildsip?",
