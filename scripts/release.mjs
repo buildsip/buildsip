@@ -6,8 +6,8 @@ if (!["patch", "minor", "major"].includes(bump)) {
   throw new Error('Expected "patch", "minor", or "major".');
 }
 
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: "inherit" });
+function run(command, args, cwd) {
+  const result = spawnSync(command, args, { cwd, stdio: "inherit" });
 
   if (result.error) {
     throw result.error;
@@ -18,13 +18,6 @@ function run(command, args) {
   }
 }
 
-run("pnpm", [
-  "--filter",
-  "./packages/cli",
-  "version",
-  bump,
-  "--message",
-  "chore: release buildsip@%s",
-]);
+run("pnpm", ["version", bump, "--message", "chore: release buildsip@%s"], "packages/cli");
 run("git", ["push"]);
 run("git", ["push", "--follow-tags"]);
