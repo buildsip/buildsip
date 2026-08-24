@@ -36,8 +36,11 @@ GOLDEN RULE: **Aggressively** strip each story down until it **only** communicat
 
 ## Writing style
 
-- **Length**: Short, max 1 paragraph for Problem, 1-3 for Summary.
-- CRITICAL: Plain and friendly, no heavy jargon. Write like you're explaining this to a colleague over coffee, not drafting a design doc or changelog. BAD EXAMPLE: "Supabase owns the authorization server discovery endpoints." -> GOOD EXAMPLE: "Supabase handles the OAuth handshake."
+- **Length**: Short, max 1-2 paragraph for Problem, 1-3 for Summary.
+- CRITICAL: Plain and friendly, but specific. No heavy jargon. Write like you're explaining this to a colleague over coffee, not drafting a design doc or changelog. BAD EXAMPLE: "Supabase owns the authorization server discovery endpoints." -> GOOD EXAMPLE: "Supabase handles the OAuth handshake."
+- Be specific, avoid vague terms. Don’t hide important context behind abstractions; instead, name the exact thing and describe the actual action whenever possible, unless it break the privacy rule.
+  - BAD EXAMPLE: "visible flash" -> GOOD EXAMPLE: "the signed-out page briefly appeared".
+  - BAD EXAMPLE: "A small server resolver repairs a missing or stale cookie from the current database value" -> GOOD EXAMPLE: "server code reads the current username from PostgreSQL, refreshes the cookie, and redirects".
 - Avoid stacking more than two nouns as modifiers. BAD EXAMPLE: "link-private first-access model" -> GOOD EXAMPLE: "access was controlled by possession of a private URL"
 - Use contractions and write in first person, from the user's perspective.
 - Describe what the user did, not what they prompted. BAD EXAMPLE: "I prompted the agent to add..." -> GOOD EXAMPLE: "I added a new feature for..."
@@ -92,6 +95,7 @@ tags:
 title: Making React Native's `TextInput` feel native
 tags:
   - React Native
+  - iOS
 ---
 
 ## Problem
