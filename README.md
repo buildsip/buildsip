@@ -34,7 +34,7 @@ buildsip alias remove /old/project/path
 buildsip prepare # Prepare logs for drafting; defaults to last 7 days
 buildsip prepare --hours 4
 buildsip prepare --days 14
-buildsip prepare --date 2026-05-23
+buildsip prepare --since 2026-05-23T00:00:00+03:00 --until 2026-05-24T00:00:00+03:00
 buildsip upload temp-abc123def456 --until 2026-06-05T12:00:00.000Z # Upload story Markdown files from the prepared temp folder. Pass `temp` and `until` from `prepare`
 buildsip cleanup temp-abc123def456 # Delete the temp folder after drafting.
 ```

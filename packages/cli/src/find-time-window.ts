@@ -4,7 +4,6 @@ type TimeWindow = {
 };
 
 export type PrepareTempLogsOptions = {
-  date?: string;
   days?: string;
   hours?: string;
   since?: string;
@@ -19,22 +18,6 @@ function parseDateValue(value: string, label: string) {
   }
 
   return date;
-}
-
-function parseDateWindow(value: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-
-  if (match === null) {
-    throw new Error(`Invalid --date value: ${value}. Use YYYY-MM-DD.`);
-  }
-
-  const year = Number(match[1]);
-  const monthIndex = Number(match[2]) - 1;
-  const day = Number(match[3]);
-  const since = new Date(year, monthIndex, day, 0, 0, 0, 0);
-  const until = new Date(year, monthIndex, day + 1, 0, 0, 0, 0);
-
-  return { since, until };
 }
 
 function parsePositiveNumber(value: string, label: string) {
@@ -106,7 +89,6 @@ export function findTimeWindow(options: PrepareTempLogsOptions) {
   const finders: Array<(input: PrepareTempLogsOptions, now: Date) => TimeWindow | undefined> = [
     findHoursWindow,
     findDaysWindow,
-    (input) => (input.date === undefined ? undefined : parseDateWindow(input.date)),
     findSinceWindow,
   ];
 
