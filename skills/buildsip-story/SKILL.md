@@ -9,7 +9,7 @@ description: Create a work story.
 
 3. Spawn a subagent with these instructions:
 
-> Read `*.jsonl` files inside the returned `tempLogsDir`. Write one Markdown file per story inside the returned `tempDir`. Use filename slugs based on each title, such as `title-of-story-1.md`, `title-of-story-2.md`, and so on. Follow the [STORY.md](<absolute path to STORY.md>) instructions. If nothing clears the **substance bar**, skip to the cleanup step. Here are the paths to the folders mentioned prior: ...
+> Read `*.jsonl` files inside the returned `tempLogsDir`. Write one Markdown file per story inside the returned `tempDir`. Use filename slugs based on each title, such as `title-of-story-1.md`, `title-of-story-2.md`, and so on. Follow the [STORY.md](<absolute path to STORY.md>) instructions. If nothing clears the **substance bar**, stop here and report that clearly. Here are the paths to the folders mentioned prior: ...
 
 Make sure you feed it the paths from the prepare command and the absolute path to [STORY.md](./STORY.md).
 
