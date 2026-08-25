@@ -116,4 +116,107 @@ describe("prepareTempLogs", () => {
       },
     ]);
   });
+
+  it("keeps only the last message in each consecutive assistant run", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "buildsip-prepare-"));
+    const homeDir = join(dir, "home");
+    const currentRoot = join(dir, "current");
+    await mkdir(join(currentRoot, ".git"), { recursive: true });
+    process.chdir(currentRoot);
+    const resolvedCurrentRoot = process.cwd();
+
+    const session = {
+      id: "cursor-session",
+      source: "cursor" as const,
+      cwd: resolvedCurrentRoot,
+      createdAt: new Date("2026-07-10T10:00:00.000Z"),
+      updatedAt: new Date("2026-07-10T10:05:00.000Z"),
+      originalPath: join(dir, "cursor-session.jsonl"),
+    };
+    const listSessions = vi.fn(async () => [session]);
+    const parseSession = vi.fn(async () => ({
+      session,
+      messages: [
+        {
+          sequence: 0,
+          role: "user" as const,
+          content: "First request",
+          timestamp: new Date("2026-07-10T10:00:00.000Z"),
+        },
+        {
+          sequence: 1,
+          role: "assistant" as const,
+          content: "Starting work",
+          timestamp: new Date("2026-07-10T10:01:00.000Z"),
+        },
+        {
+          sequence: 2,
+          role: "assistant" as const,
+          content: "First result",
+          timestamp: new Date("2026-07-10T10:02:00.000Z"),
+        },
+        {
+          sequence: 3,
+          role: "user" as const,
+          content: "Follow-up request",
+          timestamp: new Date("2026-07-10T10:03:00.000Z"),
+        },
+        {
+          sequence: 4,
+          role: "assistant" as const,
+          content: "Checking follow-up",
+          timestamp: new Date("2026-07-10T10:04:00.000Z"),
+        },
+        {
+          sequence: 5,
+          role: "assistant" as const,
+          content: "Follow-up result",
+          timestamp: new Date("2026-07-10T10:05:00.000Z"),
+        },
+      ],
+    }));
+
+    vi.doMock("@buildsip/cli-auth", () => ({
+      findBuildSipHomeDir: () => homeDir,
+    }));
+    vi.doMock("@buildsip/agent-chat-parser", () => ({ listSessions, parseSession }));
+
+    const { prepareTempLogs } = await import("../prepare-temp-logs");
+    const result = await prepareTempLogs(
+      { log: { debug: vi.fn(), warn: vi.fn() } },
+      {
+        since: "2026-07-10T00:00:00.000Z",
+        until: "2026-07-11T00:00:00.000Z",
+      },
+    );
+    const messages = (
+      await readFile(join(result.tempLogsDir, "cursor_cursor-session.jsonl"), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    expect(messages).toEqual([
+      {
+        role: "user",
+        content: "First request",
+        timestamp: "2026-07-10T10:00:00.000Z",
+      },
+      {
+        role: "assistant",
+        content: "First result",
+        timestamp: "2026-07-10T10:02:00.000Z",
+      },
+      {
+        role: "user",
+        content: "Follow-up request",
+        timestamp: "2026-07-10T10:03:00.000Z",
+      },
+      {
+        role: "assistant",
+        content: "Follow-up result",
+        timestamp: "2026-07-10T10:05:00.000Z",
+      },
+    ]);
+  });
 });

@@ -49,6 +49,29 @@ type TempLogLine = {
   timestamp: string;
 };
 
+/**
+ * Cursor subagent transcripts can expose long runs of tool-bearing work as
+ * consecutive assistant messages. Keep only the last message in each run so
+ * prepared logs retain the latest result without all of the intermediate work.
+ *
+ * TODO: Identify subagent sessions for each source and exclude their internal
+ * content before it reaches prepared logs.
+ */
+function collapseAssistantMessages(messages: TempLogLine[]) {
+  const collapsed: TempLogLine[] = [];
+
+  for (const message of messages) {
+    if (message.role === "assistant" && collapsed.at(-1)?.role === "assistant") {
+      collapsed[collapsed.length - 1] = message;
+      continue;
+    }
+
+    collapsed.push(message);
+  }
+
+  return collapsed;
+}
+
 function normalizeBuildsipLogLine(message: unknown): TempLogLine {
   if (typeof message !== "object" || message === null) {
     throw new Error("BuildSip log line must be an object.");
@@ -173,7 +196,9 @@ async function prepareLogFile({
   // roots still read as one project and absolute paths do not leak into stories.
   await writeFile(
     join(tempLogsDir, fileName),
-    `${messages.map((message) => JSON.stringify(message)).join("\n")}\n`,
+    `${collapseAssistantMessages(messages)
+      .map((message) => JSON.stringify(message))
+      .join("\n")}\n`,
     "utf8",
   );
 
@@ -288,9 +313,11 @@ async function prepareLocalAgentSessions(
     try {
       sessionsRead++;
       const parsed = await parseSession(ctx, session);
-      const messages = parsed.messages
-        .map((message) => normalizeLocalMessage(parsed.session, message))
-        .filter((message): message is TempLogLine => message !== null);
+      const messages = collapseAssistantMessages(
+        parsed.messages
+          .map((message) => normalizeLocalMessage(parsed.session, message))
+          .filter((message): message is TempLogLine => message !== null),
+      );
 
       if (messages.length === 0) {
         continue;
