@@ -27,8 +27,9 @@ GOLDEN RULE: **Aggressively** strip each story down until it **only** communicat
 
 - Assume the reader has no familiarity with the codebase, the business logic, or other stories; the story must make sense on its own. Cover only the single change in question, and skip implementation steps, abandoned approaches, edge cases, workarounds, and tool/library quirks. BAD EXAMPLE: "Writing imported sessions into the persistent hook store would've polluted authoritative recordings. Instead, only hook logs are copied in first, then local sessions fill gaps." -> GOOD EXAMPLE: "Hook logs are copied in first, then local sessions fill gaps."
 - **NOT a changelog**: Don't narrate every change connected to the story, just the big ones it wouldn't make sense without. Avoid anything that sounds like a changelog item rather than part of the core technical pattern. No cleanup like removed env vars, added comments, or renames. BAD EXAMPLE: "I added the rate-limit check _inside the /api/upload route handler, which is the endpoint clients call when uploading files_, so large bursts don't overwhelm the server." -> GOOD EXAMPLE: "I added a rate-limit check, so large bursts don't overwhelm the server."
-- **Privacy**: Try your absolute best to reveal what's at the same privacy level as a resume or interview. DO NOT skip stories if you fail.
-  - CRITICAL: **BAN internal vocabulary and business logic**. Never use words whose meaning depends on knowing the repository or product, e.g. internal commands, flags, environment variables, routes, events, and product-specific concepts. Generic code patterns and approaches are fine as long as they're not tied to this specific product.
+- **Privacy**: Try your absolute best to reveal what's at the same privacy level as a resume or interview. DO NOT skip stories if you fail; instead add a `warning` to the front matter section to alert the user.
+  - CRITICAL: **BAN internal vocabulary**. Never use words whose meaning depends on knowing the repository or product, e.g., internal commands, flags, environment variables, routes, events, and product-specific concepts.
+  - CRITICAL: **FLAG internal business logic**. If internal business logic work is substantial enough to generate a story, do so, but flag with a `warning` for the user to review. Generic code patterns and approaches are fine and don't need to be flagged as long as they're not tied to this specific product.
   - **Anonymity**: Nobody should be able to identify the user, the product, or the company.
   - OK: inline code/snippets that show a pattern, links to public docs/blogs/npm pages.
   - Never: large proprietary code chunks, absolute paths, secrets, client/company names, the repo name (check `package.json` â€” say "the app"/"the CLI"/"the service" instead), or domain logic that only makes sense inside that org.
@@ -68,6 +69,11 @@ List the tools and packages that are central to this story's technical insight â
 
 Examples: Vercel, Next.js, React, Zod, Supabase, Tailwind CSS, etc.
 
+### Warning
+
+If a story fails to satisfy the privacy requirements, add a brief text warning addressed to the user, flagging the issue so they can decide whether to publish, edit, or discard the story; otherwise omit this field.
+Length: Max 1 paragraph.
+
 ## Story file format
 
 ```markdown
@@ -77,6 +83,7 @@ tags:
 	- Tag 1
 	- Tag 2
   - ...
+warning: Privacy warning
 ---
 
 ## Problem
