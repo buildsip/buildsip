@@ -1,46 +1,77 @@
 # BuildSip CLI
 
+Use Codex, Cursor, or Claude to turn your AI chats into summaries you can publish.
+
 ![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
 
 > [!WARNING]
-> **BuildSip is alpha software.** Releases may introduce breaking changes without notice. The web app supports only the latest CLI version; compatibility with earlier versions is not guaranteed. Keeping BuildSip up to date is strongly recommended.
+> **BuildSip is alpha software.** Releases may introduce breaking changes without notice. The
+> web app supports only the latest CLI version; compatibility with earlier versions is not
+> guaranteed. Keeping BuildSip up to date is strongly recommended.
 
-## Set up
+BuildSip requires Node.js 22.5 or newer.
 
-1. Initialize the CLI
+## Quickstart
+
+### 1. Initialize BuildSip
 
 ```bash
 npx buildsip init
 ```
 
-2. Try it out
+Initialization installs the BuildSip CLI, configures the agent harnesses you select, adds the
+BuildSip story skill.
 
-Go to your agent and run the Buildsip story skill:
+### 2. Create your first story
 
-```
+Open a project in one of your agent harnesses and run the skill:
+
+```text
 /buildsip-story
 ```
 
-Commands:
+The skill prepares your recent coding chats, drafts your work stories, and asks you to review them
+before uploading anything.
+
+## Project aliases
+
+If you move or rename a project, add its old path as an alias so BuildSip can include conversations
+recorded under that path. Run the command from the project's current Git repository:
 
 ```bash
-buildsip whoami
-buildsip paths # Show local BuildSip storage paths
-buildsip logout
-buildsip alias add /old/project/path # Include conversations from an old project path
+buildsip alias add /old/project/path
+```
+
+List aliases for the current project or every project:
+
+```bash
 buildsip alias list
 buildsip alias list --all
+```
+
+Remove an alias you no longer need:
+
+```bash
 buildsip alias remove /old/project/path
-buildsip prepare # Prepare logs for drafting; defaults to last 7 days
-buildsip prepare --hours 4
-buildsip prepare --days 14
-buildsip prepare --since 2026-05-23T00:00:00+03:00 --until 2026-05-24T00:00:00+03:00
-buildsip upload temp-abc123def456 --until 2026-06-05T12:00:00.000Z # Upload story Markdown files from the prepared temp folder. Pass `temp` and `until` from `prepare`
-buildsip cleanup temp-abc123def456 # Delete the temp folder after drafting.
-buildsip uninstall # Remove BuildSip hooks and story skill from every agent harness.
+```
+
+## Account and local data
+
+Sign out of BuildSip:
+
+```bash
+buildsip logout
+```
+
+Show the paths BuildSip uses for authentication, configuration, logs, and temporary stories:
+
+```bash
+buildsip paths
 ```
 
 ## Uninstall
+
+### Remove BuildSip
 
 Remove the BuildSip hooks and story skill, then remove the global CLI:
 
@@ -49,55 +80,24 @@ buildsip uninstall
 npm uninstall -g buildsip
 ```
 
-If the global CLI was already removed, run the same integration cleanup through `npx`:
+If the global CLI was already removed, clean up the integrations through `npx`:
 
 ```bash
 npx -y buildsip@latest uninstall
 ```
 
-Uninstall keeps the Local Store at `~/.buildsip` on macOS and Linux or
-`%USERPROFILE%\.buildsip` on Windows, including its authentication, aliases, logs, and prepared
-stories.
+Uninstalling preserves your Local Store at `~/.buildsip` on macOS and Linux or
+`%USERPROFILE%\.buildsip` on Windows.
 
-## Contributing
+### Delete local data
 
-### Set up
+> [!CAUTION]
+> This permanently deletes your BuildSip authentication, aliases, logs, and prepared stories.
 
-1. Create a `.env` file with the following values:
-
-```bash
-BUILDSIP_INSTALL_MODE=link
-OAUTH_CLIENT_ID=...
-```
-
-If you run the web app locally, add:
+After removing BuildSip, delete the Local Store on macOS or Linux with:
 
 ```bash
-BUILDSIP_URL=http://localhost:3000
+rm -r ~/.buildsip
 ```
 
-`BUILDSIP_INSTALL_MODE=link` links the local CLI package and installs the story skill from `skills`.
-
-2. Initialize the package.
-
-```bash
-pnpm buildsip init
-```
-
-If you get this error:
-
-> [ERROR] The configured global bin directory [dir] is not in PATH
-
-Run:
-
-```
-pnpm setup
-```
-
-3. Don't forget always run `pnpm build` after you make changes.
-
-To unlink `buildsip`, run:
-
-```bash
-pnpm remove -g buildsip
-```
+On Windows, delete `%USERPROFILE%\.buildsip` in File Explorer.
