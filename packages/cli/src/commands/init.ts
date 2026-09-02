@@ -3,10 +3,10 @@ import { adapters, installGlobalHooks, type Name } from "@buildsip/hooks";
 import { cancel, confirm, intro, isCancel, multiselect, outro, spinner } from "@clack/prompts";
 import type { Command } from "commander";
 import pc from "picocolors";
-import { installSkill } from "../install-skill";
 import { findPackageRoot } from "../package-root";
 import { log } from "../log";
 import { runCommand } from "../run-command";
+import { installStorySkill } from "../story-skill";
 import { login } from "./login";
 
 type InitOptions = {
@@ -84,7 +84,7 @@ export function registerInitCommand(program: Command) {
         progress.stop("Agent hooks added.");
 
         progress.start("Adding story skill.");
-        await installSkill({
+        await installStorySkill({
           names,
           source:
             installMode === "link"

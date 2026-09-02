@@ -37,7 +37,27 @@ buildsip prepare --days 14
 buildsip prepare --since 2026-05-23T00:00:00+03:00 --until 2026-05-24T00:00:00+03:00
 buildsip upload temp-abc123def456 --until 2026-06-05T12:00:00.000Z # Upload story Markdown files from the prepared temp folder. Pass `temp` and `until` from `prepare`
 buildsip cleanup temp-abc123def456 # Delete the temp folder after drafting.
+buildsip uninstall # Remove BuildSip hooks and story skill from every agent harness.
 ```
+
+## Uninstall
+
+Remove the BuildSip hooks and story skill, then remove the global CLI:
+
+```bash
+buildsip uninstall
+npm uninstall -g buildsip
+```
+
+If the global CLI was already removed, run the same integration cleanup through `npx`:
+
+```bash
+npx -y buildsip@latest uninstall
+```
+
+Uninstall keeps the Local Store at `~/.buildsip` on macOS and Linux or
+`%USERPROFILE%\.buildsip` on Windows, including its authentication, aliases, logs, and prepared
+stories.
 
 ## Contributing
 

@@ -10,6 +10,14 @@ type InstallResult = {
   path: string;
 };
 
+type UninstallResult = InstallResult & {
+  removed: number;
+};
+
+type UninstallFailure = InstallResult & {
+  error: Error;
+};
+
 type CommandHook = {
   command: string;
   statusMessage?: string;
@@ -68,29 +76,52 @@ function createCommandHook(name: Name): CommandHook {
   };
 }
 
-function mergeOpenAiEvent(hooks: JsonObject, eventName: (typeof logEvents)[number], name: Name) {
-  const groups = Array.isArray(hooks[eventName]) ? hooks[eventName] : [];
+function filterOpenAiGroups(input: { groups: unknown[]; keepEmpty: boolean }) {
+  let removed = 0;
   const nextGroups: unknown[] = [];
 
-  for (const group of groups) {
+  for (const group of input.groups) {
     if (!isObject(group) || !Array.isArray(group.hooks)) {
       nextGroups.push(group);
       continue;
     }
 
     const nextHooks = group.hooks.filter((hook) => !isBuildSipHook(hook));
-    const nextGroup = { ...group, hooks: nextHooks };
+    const count = group.hooks.length - nextHooks.length;
 
+    removed += count;
+
+    if (count === 0) {
+      if (
+        input.keepEmpty ||
+        nextHooks.length > 0 ||
+        Object.keys(group).some((key) => key !== "hooks")
+      ) {
+        nextGroups.push(group);
+      }
+      continue;
+    }
+
+    // A group with no keys beyond hooks belongs entirely to BuildSip once its hooks are removed.
     if (nextHooks.length > 0 || Object.keys(group).some((key) => key !== "hooks")) {
-      nextGroups.push(nextGroup);
+      nextGroups.push({ ...group, hooks: nextHooks });
     }
   }
 
-  nextGroups.push({
+  return { groups: nextGroups, removed };
+}
+
+function mergeOpenAiEvent(hooks: JsonObject, eventName: (typeof logEvents)[number], name: Name) {
+  const { groups } = filterOpenAiGroups({
+    groups: Array.isArray(hooks[eventName]) ? hooks[eventName] : [],
+    keepEmpty: false,
+  });
+
+  groups.push({
     hooks: [createCommandHook(name)],
   });
 
-  hooks[eventName] = nextGroups;
+  hooks[eventName] = groups;
 }
 
 function mergeOpenAiHooks(config: JsonObject, name: Name) {
@@ -140,6 +171,70 @@ function mergeHooks(config: JsonObject, name: Name) {
   return mergeOpenAiHooks(config, name);
 }
 
+function removeOpenAiEvent(hooks: JsonObject, eventName: (typeof logEvents)[number]) {
+  const groups = hooks[eventName];
+
+  if (!Array.isArray(groups)) {
+    return 0;
+  }
+
+  const result = filterOpenAiGroups({ groups, keepEmpty: true });
+
+  if (result.removed > 0) {
+    hooks[eventName] = result.groups;
+  }
+
+  return result.removed;
+}
+
+function removeCursorEvent(hooks: JsonObject, eventName: (typeof cursorEvents)[number]) {
+  const eventHooks = hooks[eventName];
+
+  if (!Array.isArray(eventHooks)) {
+    return 0;
+  }
+
+  const nextHooks = eventHooks.filter((hook) => !isBuildSipHook(hook));
+  const removed = eventHooks.length - nextHooks.length;
+
+  if (removed > 0) {
+    hooks[eventName] = nextHooks;
+  }
+
+  return removed;
+}
+
+export function removeGlobalHooks(input: { config: JsonObject; name: Name }) {
+  if (!isObject(input.config.hooks)) {
+    return { config: input.config, removed: 0 };
+  }
+
+  const hooks = { ...input.config.hooks };
+  let removed = 0;
+
+  if (input.name === "cursor") {
+    for (const eventName of cursorEvents) {
+      removed += removeCursorEvent(hooks, eventName);
+    }
+  } else {
+    for (const eventName of logEvents) {
+      removed += removeOpenAiEvent(hooks, eventName);
+    }
+  }
+
+  if (removed === 0) {
+    return { config: input.config, removed };
+  }
+
+  return {
+    config: {
+      ...input.config,
+      hooks,
+    },
+    removed,
+  };
+}
+
 export async function installGlobalHooks(names: readonly Name[]) {
   const results: InstallResult[] = [];
 
@@ -161,4 +256,38 @@ export async function installGlobalHooks(names: readonly Name[]) {
   }
 
   return results;
+}
+
+export async function uninstallGlobalHooks() {
+  const results: UninstallResult[] = [];
+  const failures: UninstallFailure[] = [];
+
+  for (const adapter of adapters) {
+    try {
+      const { config, removed } = removeGlobalHooks({
+        config: await parseJson(adapter.globalPath),
+        name: adapter.name,
+      });
+
+      if (removed > 0) {
+        await writeJson(adapter.globalPath, config);
+      }
+
+      results.push({
+        label: adapter.label,
+        name: adapter.name,
+        path: adapter.globalPath,
+        removed,
+      });
+    } catch (error) {
+      failures.push({
+        label: adapter.label,
+        name: adapter.name,
+        path: adapter.globalPath,
+        error: error instanceof Error ? error : new Error(String(error)),
+      });
+    }
+  }
+
+  return { failures, results };
 }
