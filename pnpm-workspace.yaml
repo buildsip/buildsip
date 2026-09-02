@@ -10,5 +10,5 @@ allowBuilds:
   sharp: true
   workerd: true
 
-minimumReleaseAge: 4320
+minimumReleaseAge: 10080 # 7 days
 trustPolicy: no-downgrade
