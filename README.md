@@ -19,30 +19,40 @@ BuildSip requires Node.js 22.5 or newer.
 npx buildsip init
 ```
 
-Initialization installs the BuildSip CLI, configures the agent harnesses you select, adds the
-BuildSip story skill.
+Installs: the BuildSip CLI, a skill for writing stories, and agent hooks that store your conversations locally in the `.buildsip` folder.
 
 ### 2. Create your first story
 
-Open a project in one of your agent harnesses and run the skill:
+Open a **project** in one of your agent harnesses and run the skill:
 
 ```text
-/buildsip-story
+/buildsip-story last 7 days
 ```
 
-The skill prepares your recent coding chats, drafts your work stories, and asks you to review them
-before uploading anything.
+Keep the interval short to preserve story quality.
+
+The `/buildsip-story` skill finds meaningful conversations from the selected project and turns them into stories locally. It will ask you to review them before anything is uploaded.
+
+### 3. Login
+
+Skip this if you've already logged in at Step 1.
+
+Before uploading stories, make sure you login:
+
+```bash
+buildsip login
+```
 
 ## Uninstall
 
 ### Remove BuildSip
 
 ```bash
-buildsip uninstall # Remove the BuildSip hooks and story skill
+buildsip uninstall # Remove the BuildSip agent hooks and story skill
 npm uninstall -g buildsip
 ```
 
-If the global CLI was already removed, clean up the BuildSip hooks and story skill through `npx`:
+If the `buildsip` CLI was already removed, clean up the agent hooks and story skill through `npx`:
 
 ```bash
 npx -y buildsip@latest uninstall
@@ -54,9 +64,9 @@ Uninstalling preserves your Local Store at `~/.buildsip` on macOS and Linux or
 ### Delete local data
 
 > [!CAUTION]
-> This permanently deletes the `.buildsip` folder on this machine, which includes BuildSip's local copies of your chats and your aliases. Your original chats in Cursor, Claude, and Codex are untouched.
+> This permanently deletes the `.buildsip` folder on this machine, which includes BuildSip's local copies of your chats and your aliases. Your original chats in Cursor, Claude, and Codex aren't affected.
 
-After removing BuildSip, delete the Local Store on macOS or Linux with:
+Delete the Local Store on macOS or Linux with:
 
 ```bash
 rm -r ~/.buildsip
@@ -73,11 +83,9 @@ recorded under that path. Run the command from the project's current Git reposit
 buildsip alias add /old/project/path
 ```
 
-List aliases for the current project or every project:
-
 ```bash
-buildsip alias list
-buildsip alias list --all
+buildsip alias list # List aliases for the current project
+buildsip alias list --all # List all aliases
 ```
 
 Remove an alias you no longer need:
