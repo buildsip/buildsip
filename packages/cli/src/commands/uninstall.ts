@@ -48,8 +48,13 @@ export function registerUninstallCommand(program: Command) {
         return;
       }
 
+      const removeStoreInstruction =
+        process.platform === "win32"
+          ? `delete ${pc.greenBright("%USERPROFILE%\\.buildsip")} in File Explorer`
+          : `run ${pc.greenBright("rm -r ~/.buildsip")}`;
+
       outro(
-        `BuildSip integrations removed. Your Local Store was kept.\n\nTo remove the CLI, run ${pc.greenBright("npm uninstall -g buildsip")}.`,
+        `BuildSip integrations removed.\n\nTo remove your Local Store, ${removeStoreInstruction}.\n\nTo remove the CLI, run ${pc.greenBright("npm uninstall -g buildsip")}.`,
       );
     });
 }
