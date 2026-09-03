@@ -1,6 +1,6 @@
 # BuildSip CLI
 
-Use Codex, Cursor, or Claude to turn your AI chats into summaries you can publish.
+Use your own agent to turn the interesting things you build in Codex, Cursor, or Claude Code into mini blog posts.
 
 ![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
 
