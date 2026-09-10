@@ -1,12 +1,13 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { BetterFetchError, ValidationError, betterFetch } from "@better-fetch/fetch";
+import { betterFetch } from "@better-fetch/fetch";
 import { cancel, intro, outro, spinner } from "@clack/prompts";
 import { auth } from "@buildsip/cli-auth";
 import type { Command } from "commander";
 import pc from "picocolors";
 import z from "zod";
 import { config } from "../constants";
+import { draftUploadErrorMessage } from "../draft-upload-error-message";
 import { log } from "../log";
 import { resolveTempFolder } from "../resolve-temp-folder";
 
@@ -85,25 +86,7 @@ export function registerUploadCommand(program: Command) {
         });
 
         if (error) {
-          if (error instanceof BetterFetchError) {
-            const uploadError = z
-              .object({
-                error: z.string(),
-              })
-              .safeParse(error.error);
-
-            throw new Error(
-              uploadError.success
-                ? uploadError.data.error
-                : `Draft upload failed with status ${error.status}.`,
-            );
-          }
-
-          if (error instanceof ValidationError) {
-            throw new Error("BuildSip returned an invalid upload response.");
-          }
-
-          throw error;
+          throw new Error(draftUploadErrorMessage(error));
         }
 
         s.stop("Draft uploaded.");
