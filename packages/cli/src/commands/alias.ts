@@ -44,7 +44,7 @@ export function registerAliasCommand(program: Command) {
   command
     .command("add")
     .description("Add an old path as an alias for the current git root.")
-    .argument("<path>", "Old path to include when preparing stories")
+    .argument("<path>", "Old path to include when preparing notes")
     .action(async (aliasPath: string) => {
       try {
         const root = await findRequiredGitProjectRoot();

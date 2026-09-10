@@ -1,6 +1,6 @@
 # BuildSip CLI
 
-Use your own agent to turn the interesting things you build in Codex, Cursor, or Claude Code into mini blog posts.
+Use your own agent to turn the interesting things you build in Codex, Cursor, or Claude Code into implementation notes.
 
 ![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
 
@@ -19,25 +19,25 @@ BuildSip requires Node.js 22.5 or newer.
 npx buildsip init
 ```
 
-Installs: the BuildSip CLI, a skill for writing stories, and agent hooks that store your conversations locally in the `.buildsip` folder.
+Installs: the BuildSip CLI, a skill for writing implementation notes, and agent hooks that store your conversations locally in the `.buildsip` folder.
 
-### 2. Create your first story
+### 2. Create your first note
 
 Open a **project** in one of your agent harnesses and run the skill:
 
 ```text
-/buildsip-story last 7 days
+/buildsip-note last 7 days
 ```
 
-Keep the interval short to preserve story quality.
+Keep the interval short to preserve implementation note quality.
 
-The `/buildsip-story` skill finds meaningful conversations from the selected project and turns them into stories locally. It will ask you to review them before anything is uploaded.
+The `/buildsip-note` skill finds meaningful conversations from the selected project and turns them into implementation notes locally. It will ask you to review them before anything is uploaded.
 
 ### 3. Login
 
 Skip this if you've already logged in at Step 1.
 
-Before uploading stories, make sure you login:
+Before uploading implementation notes, make sure you login:
 
 ```bash
 buildsip login
@@ -48,11 +48,11 @@ buildsip login
 ### Remove BuildSip
 
 ```bash
-buildsip uninstall # Remove the BuildSip agent hooks and story skill
+buildsip uninstall # Remove the BuildSip agent hooks and note skill
 npm uninstall -g buildsip
 ```
 
-If the `buildsip` CLI was already removed, clean up the agent hooks and story skill through `npx`:
+If the `buildsip` CLI was already removed, clean up the agent hooks and note skill through `npx`:
 
 ```bash
 npx -y buildsip@latest uninstall
@@ -102,7 +102,7 @@ Sign out of BuildSip:
 buildsip logout
 ```
 
-Show the paths BuildSip uses for authentication, configuration, logs, and temporary stories:
+Show the paths BuildSip uses for authentication, configuration, logs, and temporary implementation notes:
 
 ```bash
 buildsip paths

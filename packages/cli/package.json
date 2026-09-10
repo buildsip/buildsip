@@ -1,7 +1,7 @@
 {
   "name": "buildsip",
   "version": "0.7.0",
-  "description": "AI chats -> shareable stories",
+  "description": "AI chats -> implementation notes",
   "license": "UNLICENSED",
   "type": "module",
   "homepage": "https://github.com/buildsip/buildsip#readme",

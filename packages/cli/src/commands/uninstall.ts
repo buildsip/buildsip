@@ -3,12 +3,12 @@ import { cancel, intro, outro, spinner } from "@clack/prompts";
 import type { Command } from "commander";
 import pc from "picocolors";
 import { log } from "../log";
-import { uninstallStorySkill } from "../story-skill";
+import { uninstallNoteSkill } from "../note-skill";
 
 export function registerUninstallCommand(program: Command) {
   program
     .command("uninstall")
-    .description("Remove BuildSip hooks and story skill from every agent harness.")
+    .description("Remove BuildSip hooks and note skill from every agent harness.")
     .action(async () => {
       intro(pc.greenBright("BuildSip uninstall"));
       const progress = spinner();
@@ -25,16 +25,16 @@ export function registerUninstallCommand(program: Command) {
 
       progress.stop(removed === 0 ? "Agent hooks already removed." : "Agent hooks removed.");
 
-      progress.start("Removing story skill.");
+      progress.start("Removing note skill.");
 
       try {
-        await uninstallStorySkill();
-        progress.stop("Story skill removed.");
+        await uninstallNoteSkill();
+        progress.stop("Note skill removed.");
       } catch (error) {
         log.debug(error);
-        progress.stop("Story skill could not be removed.");
+        progress.stop("Note skill could not be removed.");
         failures.push(
-          error instanceof Error ? `Story skill: ${error.message}` : "Story skill cleanup failed.",
+          error instanceof Error ? `Note skill: ${error.message}` : "Note skill cleanup failed.",
         );
       }
 

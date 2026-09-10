@@ -16,7 +16,7 @@ pnpm i
 BUILDSIP_INSTALL_MODE=link
 ```
 
-`BUILDSIP_INSTALL_MODE=link` installs the local CLI package globally and installs the story skill
+`BUILDSIP_INSTALL_MODE=link` installs the local CLI package globally and installs the note skill
 from this repository.
 
 To use a locally running web app, also add:
@@ -71,9 +71,9 @@ Format Markdown and TypeScript files with:
 pnpm format
 ```
 
-## Internal story workflow
+## Internal note workflow
 
-The `/buildsip-story` skill normally runs this workflow. These commands are documented here for
+The `/buildsip-note` skill normally runs this workflow. These commands are documented here for
 development and troubleshooting; users should not need to run them manually.
 
 Prepare filtered conversation logs. The default window is the last seven days:
@@ -85,14 +85,14 @@ buildsip prepare --days 14
 buildsip prepare --since 2026-05-23T00:00:00+03:00 --until 2026-05-24T00:00:00+03:00
 ```
 
-Keep the `temp` and `until` values returned by `prepare`. After drafting story Markdown files in the
+Keep the `temp` and `until` values returned by `prepare`. After drafting note Markdown files in the
 temporary folder, upload them with:
 
 ```bash
 buildsip upload <temp> --until <until>
 ```
 
-After a successful upload, delete the prepared logs and stories with:
+After a successful upload, delete the prepared logs and notes with:
 
 ```bash
 buildsip cleanup <temp>

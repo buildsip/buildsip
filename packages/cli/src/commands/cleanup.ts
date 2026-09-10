@@ -8,7 +8,7 @@ export function registerCleanupCommand(program: Command) {
   program
     .command("cleanup")
     .description(
-      "Delete a temp folder, which contains prepared logs and stories only needed for the upload.",
+      "Delete a temp folder, which contains prepared logs and notes only needed for the upload.",
     )
     .argument("<temp>", "Temp folder name from prepare")
     .action(async (temp: string) => {

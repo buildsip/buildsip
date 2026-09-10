@@ -191,9 +191,9 @@ async function prepareLogFile({
     };
   }
 
-  // Prepared logs are read directly by the story-writing agent. Keep cwd in raw
+  // Prepared logs are read directly by the note-writing agent. Keep cwd in raw
   // hook logs for filtering/debugging, but strip it from the temp logs so alias
-  // roots still read as one project and absolute paths do not leak into stories.
+  // roots still read as one project and absolute paths do not leak into notes.
   await writeFile(
     join(tempLogsDir, fileName),
     `${collapseAssistantMessages(messages)

@@ -23,17 +23,17 @@ async function findMarkdownPaths(directory: string) {
     .sort();
 }
 
-async function readStoryForm(storyPaths: string[], until: string) {
+async function readNoteForm(notePaths: string[], until: string) {
   const body = new FormData();
   body.set("until", until);
 
-  for (const storyPath of storyPaths) {
+  for (const notePath of notePaths) {
     body.append(
-      "stories",
-      new Blob([await readFile(storyPath)], {
+      "notes",
+      new Blob([await readFile(notePath)], {
         type: "text/markdown; charset=utf-8",
       }),
-      basename(storyPath),
+      basename(notePath),
     );
   }
 
@@ -43,9 +43,9 @@ async function readStoryForm(storyPaths: string[], until: string) {
 export function registerUploadCommand(program: Command) {
   program
     .command("upload")
-    .description("Upload story markdown files from a temp folder.")
+    .description("Upload note markdown files from a temp folder.")
     .argument("<temp>", "Temp folder name from prepare")
-    .option("--until <iso>", "Story work window end timestamp")
+    .option("--until <iso>", "Note work window end timestamp")
     .action(async (temp: string, options: UploadOptions) => {
       intro(pc.greenBright("BuildSip upload"));
       const s = spinner();
@@ -59,17 +59,17 @@ export function registerUploadCommand(program: Command) {
         }
 
         const { tempDir } = await resolveTempFolder(temp);
-        const storyPaths = await findMarkdownPaths(tempDir);
+        const notePaths = await findMarkdownPaths(tempDir);
 
         if (!options.until) {
           throw new Error("Upload requires --until from the buildsip prepare result.");
         }
 
-        if (storyPaths.length === 0) {
-          throw new Error("No story markdown files found.");
+        if (notePaths.length === 0) {
+          throw new Error("No note markdown files found.");
         }
 
-        const body = await readStoryForm(storyPaths, options.until);
+        const body = await readNoteForm(notePaths, options.until);
 
         s.message("Uploading draft.");
         const { data, error } = await betterFetch("/api/drafts", {

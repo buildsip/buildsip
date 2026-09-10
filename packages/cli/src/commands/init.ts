@@ -6,7 +6,7 @@ import pc from "picocolors";
 import { findPackageRoot } from "../package-root";
 import { log } from "../log";
 import { runCommand } from "../run-command";
-import { installStorySkill } from "../story-skill";
+import { installNoteSkill } from "../note-skill";
 import { login } from "./login";
 
 type InitOptions = {
@@ -83,8 +83,8 @@ export function registerInitCommand(program: Command) {
         await installGlobalHooks(names);
         progress.stop("Agent hooks added.");
 
-        progress.start("Adding story skill.");
-        await installStorySkill({
+        progress.start("Adding note skill.");
+        await installNoteSkill({
           names,
           source:
             installMode === "link"
@@ -93,7 +93,7 @@ export function registerInitCommand(program: Command) {
           verbose: options.verbose,
         });
 
-        progress.stop("Story skill added.");
+        progress.stop("Note skill added.");
 
         const shouldLogin = await confirm({
           message: "Sign in to Buildsip?",
@@ -112,7 +112,7 @@ export function registerInitCommand(program: Command) {
         }
 
         outro(
-          `Done. Run the ${pc.greenBright("/buildsip-story")} skill in your agent to start using BuildSip.`,
+          `Done. Run the ${pc.greenBright("/buildsip-note")} skill in your agent to start using BuildSip.`,
         );
       } catch (error) {
         log.debug(error);
