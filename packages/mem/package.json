@@ -1,0 +1,44 @@
+{
+  "name": "mem",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Git-native memory for AI coding agents",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "mem": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "mem": "pnpm build && node ./dist/index.js",
+    "format": "oxfmt --write src scripts",
+    "test": "pnpm build && vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.5.1",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "commander": "^14.0.3",
+    "jsonc-parser": "^3.3.1",
+    "minisearch": "^7.2.0",
+    "semver": "^7.8.5",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@buildsip/file-utils": "workspace:*",
+    "@types/node": "^25.9.1",
+    "@types/semver": "^7.8.0",
+    "esbuild": "^0.28.0",
+    "oxfmt": "^0.50.0",
+    "typescript": "5.9.2",
+    "vitest": "^4.0.18"
+  }
+}

@@ -1,8 +1,22 @@
 # MCP Tools
 
-### `upsert-memories`
+### `insert-memory`
 
-Inserts or updates memories.
+Creates one memory.
+
+Memories go into the deepest package or repo root containing every scoped path.
+
+Example: `scope: ["apps/web/auth", "apps/web/constants.ts"]` => memory is created in `apps/web/.memories`
+
+For a memory at the Git root, pass `["*"]`.
+
+### `update-memory`
+
+Updates an existing memory.
+
+Changing scope can move the memory to another package or the repo root. Every update also repairs the memory folder's name to match the title, even if the title did not change.
+
+Updates respect `doNotEdit` and refuse to overwrite another folder or move a folder containing other memories.
 
 ### `get-recent-sessions`
 
@@ -14,23 +28,20 @@ Searches the memories.
 
 Params:
 
-- `scope`: Optional. Globs allowed. Defaults to `*`.
+- `scope`: Optional array of repository-relative file or directory paths. If omitted or `["*"]`/`["."]`, it searches the whole repo.
 
-Search has two modes:
+Search reads memories from:
 
-- **Specific** `scope` (e.g. `apps/web`, `apps/web/`, `apps/web/components/badge.tsx`): start at that path and walk **up** to the repository root. Sibling trees are skipped. Memories from other repositories in the workspace with `[availableToWorkspace: true](./config.md#availabletoworkspace)` are also included.
-- **Omitted** `scope` **or** `scope: "*"` **(global search):** Searches across **all** memories in the `targetProject`.
-
-The parent of the `.memories` directory is already included in `scope`.
+- descendant `.memories` directories
+- all parents' `.memories` directories up to the repo root whose scope includes or overlaps with the requested `scope` param
+- other repositories in the workspace with `[availableToWorkspace: true](./config.md#availabletoworkspace)`
 
 Examples:
 
-- `apps/web`:
-  - searches `apps/web/.memories` + root `.memories`. Includes memories whose frontmatter `scope` is missing, `*`, or matches `apps/web`.
-  - searches all memories from other workspace repos where `availableToWorkspace` is set to `true`
-- `*` **or omitted:**
-  - searches all memories from the `targetProject`
-  - searches all memories from other workspace repos where `availableToWorkspace` is set to `true`
+- `apps/web` searches memories from:
+  - `apps/web/.memories`
+  - root `.memories`, only includes memories whose frontmatter `scope` includes or overlaps with `apps/web`, e.g. `apps`, `apps/web/auth`
+  - other workspace repos where `availableToWorkspace` is set to `true`
 
 **Good to know**: Upvotes or recency don't affect results.
 

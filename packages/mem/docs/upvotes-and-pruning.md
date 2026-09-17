@@ -15,9 +15,7 @@
 
 ```json
 {
-  "prune": {
-    "enabled": false
-  }
+  "prune": false
 }
 ```
 

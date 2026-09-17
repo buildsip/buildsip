@@ -38,7 +38,7 @@ Frontmatter fields act as searchable tags.
 id: 7fe24e91-4808-4f80-bc39-5d86f7a74be0          # DO NOT CHANGE
 title: Axios retry duplication after reconnect
 scope:
-  - apps/*      # Wildcards supported!
+  - apps        # Includes every app beneath this directory
   - services/billing
 doNotDelete: false
 doNotEdit: false
@@ -71,9 +71,19 @@ Set this to `true` if you want to disallow the agent to edit it via MCP tools.
 
 #### scope
 
-Optional. Defaults to the parent of the `.memories` directory. Paths or globs this memory applies to.
+Optional. **Scopes are literal paths relative to the git root, not globs.**
 
-Controls search boundaries to prevent context pollution. Read [how search works](./mcp.md#search-memories).
+A missing frontmatter scope means the scope defaults to the parent of the `.memories` directory.
+
+Example:
+
+```yaml
+scope:
+  - apps/web
+  - apps/api
+```
+
+This memory applies to the `web` and `api` directories and all files beneath them.
 
 ### Custom fields
 
@@ -98,4 +108,4 @@ retireWhen:
 Content
 ```
 
-To use custom fields, you must define [`frontmatter.custom` in `config.json`](./config.md#custom).
+To use custom fields, define [a schema](./config.md#custom).

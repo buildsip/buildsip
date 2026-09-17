@@ -1,0 +1,26 @@
+{
+  "name": "@buildsip/file-utils",
+  "version": "0.0.0",
+  "description": "General filesystem and path helpers for Node.js.",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "oxfmt --write src README.md"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^25.9.1",
+    "oxfmt": "^0.50.0",
+    "typescript": "5.9.2",
+    "vitest": "^4.0.18"
+  }
+}

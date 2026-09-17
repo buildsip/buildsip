@@ -6,5 +6,4 @@ yarn-error.log*
 .env
 .fallow/
 dist
-packages/cli/README.md
 .DS_Store
