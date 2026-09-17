@@ -48,7 +48,7 @@ export function validateFrontmatter({
         )}: remove these undeclared fields or define their JSON Schema under frontmatter.custom in the repository root's .memories/config.json, for example {"frontmatter":{"custom":{"properties":{"ticket":{"type":"string"}}}}}. Custom fields go next to title, not inside a custom object.`,
     );
   if (schema) {
-    // Ajv compiling a schema is slow, and search can hit this for thousands of memory files. Same config = same schema object shape, so stringify it and use that string as a Map key.
+    // Reuse the compiled schema when several writes use the same repo configuration.
     const key = JSON.stringify(schema);
     let validateCustom = schemas.get(key);
     if (!validateCustom) {

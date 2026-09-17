@@ -133,36 +133,35 @@ it("preserves Markdown whitespace and custom fields when parsing JSON input", ()
 });
 
 it.each([
-  { value: {}, field: "path", error: "Provide the path" },
-  { value: { path: " " }, field: "path", error: "Provide the path" },
-  { value: { path: "memory.md", body: "" }, field: "body", error: "Expected a nonempty string" },
+  { value: { path: "memory.md" }, field: "path", error: "Pass the memory path via --path" },
+  { value: { body: "" }, field: "body", error: "Expected a nonempty string" },
   {
-    value: { path: "memory.md", frontmatter: { title: " " } },
+    value: { frontmatter: { title: " " } },
     field: "frontmatter.title",
     error: "Expected a nonempty string",
   },
   {
-    value: { path: "memory.md", frontmatter: { scope: [] } },
+    value: { frontmatter: { scope: [] } },
     field: "frontmatter.scope",
     error: "Expected a nonempty array",
   },
   {
-    value: { path: "memory.md", frontmatter: { id: "existing-id" } },
+    value: { frontmatter: { id: "existing-id" } },
     field: "frontmatter.id",
     error: "Omit id",
   },
   {
-    value: { path: "memory.md", frontmatter: { title: null } },
+    value: { frontmatter: { title: null } },
     field: "frontmatter.title",
     error: "Expected a nonempty string",
   },
   {
-    value: { path: "memory.md", id: "existing-id" },
+    value: { id: "existing-id" },
     field: "id",
     error: "Remove this unknown field",
   },
   {
-    value: { path: "memory.md", frontmatter: null },
+    value: { frontmatter: null },
     field: "frontmatter",
     error: "Expected an object",
   },
@@ -183,4 +182,8 @@ it.each(["provided-id", null])("rejects caller-supplied IDs on insert: %s", (id)
       },
     }),
   ).toThrow(/Omit id[^\n]*\n  → at frontmatter.id/);
+});
+
+it("accepts an empty patch for a folder-name repair", () => {
+  expect(parseValue({ schema: updateSchema, value: {}, label: "update input" })).toEqual({});
 });

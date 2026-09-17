@@ -57,7 +57,7 @@ Malformed memories in selected stores fail the search. Sibling stores outside th
 
 Overlapping workspace folders are deduplicated by `memory.md` path.
 
-Search validates each store's config, including [`frontmatter.custom`](../config/frontmatter.md).
+Search validates each store's config and built-in memory fields. Custom fields remain searchable after [schema changes](../config/frontmatter.md#schema-changes).
 
 ## Examples
 

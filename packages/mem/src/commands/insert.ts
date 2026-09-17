@@ -46,7 +46,7 @@ export function registerInsertCommand({ program }: { program: Command }) {
     )
     .requiredOption("--repo <path>", "Git root of the workspace project the agent is working on.")
     .description(
-      'Insert one memory from JSON containing body and frontmatter with title and scope. Search first for a related memory to update. Pass the narrowest scope that accurately covers this memory; use ["*"] only for memories that apply to the whole repository. The ID is generated automatically.',
+      'Insert one memory from JSON containing body and frontmatter with title and scope. Search first for a related memory to update. Pass the narrowest existing file or directory scope inside the repo that accurately covers this memory; use ["*"] only for memories that apply to the whole repository. The ID is generated automatically.',
     )
     .option("--input <file>", "Read one memory JSON object from a file; omit or use - for stdin.")
     .action(async (options: { roots: string[]; repo: string; input?: string }) => {

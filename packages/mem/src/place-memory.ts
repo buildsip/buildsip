@@ -1,39 +1,15 @@
-import {
-  assertNoSymlinks,
-  findUp,
-  isInside,
-  relativePosix,
-  statIfExists,
-} from "@buildsip/file-utils";
+import { findUp, isInside, relativePosix, statIfExists } from "@buildsip/file-utils";
 import { join, resolve } from "node:path";
-import { findRepo } from "./find-repo";
 import { matchesScope } from "./matches-scope";
 import { NAMES } from "./names";
-import { normalizeScopes } from "./normalize-scopes";
+import { validateScopes } from "./validate-scopes";
 
 /** Chooses the deepest store containing all scopes and omits scope when the store implies it. */
 export async function placeMemory({ repo, scope }: { repo: string; scope: string[] }) {
-  const normalizedScopes = normalizeScopes(scope).map((scopePath) =>
-    scopePath === "." ? "*" : scopePath,
-  );
+  const normalizedScopes = await validateScopes({ repo, scope });
   const scopePaths = normalizedScopes.map((scopePath) =>
     scopePath === "*" ? repo : resolve(repo, scopePath),
   );
-  for (const scopePath of scopePaths) {
-    // Check the full path before following ancestors, including scopes for files not created yet.
-    await assertNoSymlinks({ path: scopePath, base: repo });
-    const directory = await findUp({
-      path: scopePath,
-      root: repo,
-      test: async (parent) =>
-        (await statIfExists({ path: parent, ignoreNotDirectory: true }))?.isDirectory() === true,
-    });
-    // The closest existing directory reveals whether this scope crosses into a nested Git repo.
-    if (directory && (await findRepo(directory)) !== repo)
-      throw new Error(
-        `Choose scopes inside ${repo}. Scope ${scopePath} belongs to a different Git repository.`,
-      );
-  }
   const store =
     (await findUp({
       path: scopePaths[0]!,

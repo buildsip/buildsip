@@ -1,27 +1,25 @@
 import { assertNoSymlinks } from "@buildsip/file-utils";
 import { readFile, stat } from "node:fs/promises";
 import { parseDocument } from "yaml";
-import { validateFrontmatter } from "./validate-frontmatter";
+import { frontmatterSchema } from "./frontmatter-schema";
+import { parseValue } from "./parse-value";
 import type { Memory } from "./memory";
-import type { Config } from "./read-config";
 
 const cache = new Map<string, { stamp: string; frontmatter: unknown; body: string }>();
 
 /**
  * Reads YAML frontmatter and the Markdown body, reusing parsed content while the
- * file's timestamps, size, and inode stay unchanged. Frontmatter is validated on
- * every call so config changes still apply when the file itself has not changed.
+ * file's timestamps, size, and inode stay unchanged. Reads check built-in fields;
+ * custom schemas apply only when saving, so schema changes do not hide old memories.
  */
 export async function readMemory({
   path,
   project,
   repo,
-  config,
 }: {
   path: string;
   project: string;
   repo: string;
-  config: Config;
 }): Promise<Memory> {
   await assertNoSymlinks({ path, base: repo });
   // Nanosecond timestamps catch quick edits; the inode changes when a file is replaced.
@@ -44,6 +42,11 @@ export async function readMemory({
     if (cache.size >= 5000) cache.clear();
     cache.set(path, parsed);
   }
-  const frontmatter = validateFrontmatter({ value: parsed.frontmatter, config, path });
+  const frontmatter = parseValue({
+    schema: frontmatterSchema,
+    value: parsed.frontmatter,
+    label: `frontmatter ${path}`,
+    path: ["frontmatter"],
+  });
   return { path, project, stamp, frontmatter, body: parsed.body };
 }
