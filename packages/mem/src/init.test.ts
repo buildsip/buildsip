@@ -163,21 +163,117 @@ describe("mem init", () => {
     expect(log.info).not.toHaveBeenCalled();
   });
 
-  it.each(["", "src"])("initializes the nearest package from %j", async (subdir) => {
+  it.each(["", "src"])("initializes the repo first from a nested package's %j", async (subdir) => {
     await init({ cwd: join(web, subdir), cliRoot });
+    expect(JSON.parse(readFileSync(join(root, NAMES.MEMORIES, NAMES.CONFIG_JSON), "utf8"))).toEqual(
+      {
+        version: 1,
+        availableToWorkspace: false,
+        prune: false,
+      },
+    );
+    expect(existsSync(join(web, NAMES.MEMORIES))).toBe(false);
+    expect(existsSync(join(web, "src", NAMES.MEMORIES))).toBe(false);
+    expect(confirm).toHaveBeenCalledTimes(3);
+    expect(log.info).toHaveBeenCalledWith(
+      `First-time setup: initializing the repository at ${root}. Run mem init again from this package to configure it.`,
+    );
+    expect(execFileSync).toHaveBeenCalledWith(
+      "pnpm",
+      ["add", "-g", cliRoot],
+      expect.objectContaining({ cwd: root }),
+    );
+    expect(outro).toHaveBeenCalledWith("@acme/monorepo initialized.");
+  });
+
+  it.each(["", "src"])(
+    "initializes the nearest package from %j after repo setup",
+    async (subdir) => {
+      existing({});
+      await init({ cwd: join(web, subdir), cliRoot });
+      expect(
+        JSON.parse(readFileSync(join(web, NAMES.MEMORIES, NAMES.CONFIG_JSON), "utf8")),
+      ).toEqual({
+        version: 1,
+        prune: false,
+      });
+      expect(confirm).toHaveBeenCalledTimes(2);
+      expect(
+        vi.mocked(confirm).mock.calls.some(([options]) => options.message.includes("workspace")),
+      ).toBe(false);
+      expect(readFileSync(join(root, NAMES.MEMORIES, NAMES.CONFIG_JSON), "utf8")).toBe("{}");
+      expect(existsSync(join(web, "src", NAMES.MEMORIES))).toBe(false);
+      expect(log.info).not.toHaveBeenCalled();
+      expect(outro).toHaveBeenCalledWith("@acme/web initialized.");
+      expect(existsSync(join(root, NAMES.VSCODE, NAMES.SETTINGS_JSON))).toBe(true);
+    },
+  );
+
+  it("initializes the package on the next run from the same directory", async () => {
+    const cwd = join(web, "src");
+    await init({ cwd, cliRoot });
+    const path = join(root, NAMES.MEMORIES, NAMES.CONFIG_JSON);
+    const source = readFileSync(path, "utf8");
+    vi.mocked(confirm).mockClear();
+    await init({ cwd, cliRoot });
+    expect(readFileSync(path, "utf8")).toBe(source);
     expect(JSON.parse(readFileSync(join(web, NAMES.MEMORIES, NAMES.CONFIG_JSON), "utf8"))).toEqual({
       version: 1,
       prune: false,
     });
     expect(confirm).toHaveBeenCalledTimes(2);
-    expect(
-      vi.mocked(confirm).mock.calls.some(([options]) => options.message.includes("workspace")),
-    ).toBe(false);
-    expect(existsSync(join(root, NAMES.MEMORIES))).toBe(false);
-    expect(existsSync(join(web, "src", NAMES.MEMORIES))).toBe(false);
-    expect(outro).toHaveBeenCalledWith("@acme/web initialized.");
-    expect(existsSync(join(root, NAMES.VSCODE, NAMES.SETTINGS_JSON))).toBe(true);
+    expect(outro).toHaveBeenLastCalledWith("@acme/web initialized.");
   });
+
+  it("preserves an existing package config while completing first-time repo setup", async () => {
+    mkdirSync(join(web, NAMES.MEMORIES, NAMES.DATA), { recursive: true });
+    const path = join(web, NAMES.MEMORIES, NAMES.CONFIG_JSON);
+    const source = '{"prune":{"ttl":"120d"}}';
+    writeFileSync(path, source);
+    writeFileSync(join(web, NAMES.MEMORIES, NAMES.DATA, "keep.txt"), "keep");
+    await init({ cwd: web, cliRoot });
+    expect(readFileSync(path, "utf8")).toBe(source);
+    expect(readFileSync(join(web, NAMES.MEMORIES, NAMES.DATA, "keep.txt"), "utf8")).toBe("keep");
+    expect(JSON.parse(readFileSync(join(root, NAMES.MEMORIES, NAMES.CONFIG_JSON), "utf8"))).toEqual(
+      {
+        version: 1,
+        availableToWorkspace: false,
+        prune: false,
+      },
+    );
+    expect(confirm).toHaveBeenCalledTimes(3);
+  });
+
+  it("offers package reconfiguration once the repo is initialized", async () => {
+    existing({});
+    mkdirSync(join(web, NAMES.MEMORIES));
+    const path = join(web, NAMES.MEMORIES, NAMES.CONFIG_JSON);
+    const source = '{"prune":false}';
+    writeFileSync(path, source);
+    await init({ cwd: join(web, "src"), cliRoot });
+    expect(confirm).toHaveBeenCalledExactlyOnceWith({
+      message: "@acme/web is already initialized. Reconfigure its settings?",
+      initialValue: false,
+    });
+    expect(readFileSync(path, "utf8")).toBe(source);
+    expect(readFileSync(join(root, NAMES.MEMORIES, NAMES.CONFIG_JSON), "utf8")).toBe("{}");
+    expect(log.step).not.toHaveBeenCalled();
+    expect(outro).toHaveBeenCalledWith("@acme/web unchanged.");
+  });
+
+  it.each(["", '{"broken":', '{"version":2}'])(
+    "rejects an invalid root config %j from a nested package before setup",
+    async (source) => {
+      existing({});
+      const path = join(root, NAMES.MEMORIES, NAMES.CONFIG_JSON);
+      writeFileSync(path, source);
+      await expect(init({ cwd: web, cliRoot })).rejects.toThrow("config");
+      expect(readFileSync(path, "utf8")).toBe(source);
+      expect(existsSync(join(web, NAMES.MEMORIES))).toBe(false);
+      expect(confirm).not.toHaveBeenCalled();
+      expect(log.step).not.toHaveBeenCalled();
+    },
+  );
 
   it("uses a worktree's root and its folder name without a manifest", async () => {
     execFileSync(
@@ -198,8 +294,13 @@ describe("mem init", () => {
     );
     const worktree = join(temp, "worktree");
     execFileSync("git", ["worktree", "add", "--detach", worktree], { cwd: root, stdio: "pipe" });
-    await init({ cwd: worktree, cliRoot });
+    const nested = join(worktree, "packages", "web");
+    mkdirSync(join(nested, "src"), { recursive: true });
+    writeFileSync(join(nested, NAMES.PACKAGE_JSON), '{"name":"web"}');
+    await init({ cwd: join(nested, "src"), cliRoot });
     expect(existsSync(join(worktree, NAMES.MEMORIES, NAMES.CONFIG_JSON))).toBe(true);
+    expect(existsSync(join(nested, NAMES.MEMORIES))).toBe(false);
+    expect(existsSync(join(root, NAMES.MEMORIES))).toBe(false);
     expect(outro).toHaveBeenCalledWith("worktree initialized.");
   });
 
@@ -259,6 +360,7 @@ describe("mem init", () => {
   it.each([false, true])(
     "rejects package sharing %s before prompting or installing",
     async (value) => {
+      existing({});
       mkdirSync(join(web, NAMES.MEMORIES));
       const path = join(web, NAMES.MEMORIES, NAMES.CONFIG_JSON);
       const source = JSON.stringify({ availableToWorkspace: value });
@@ -275,8 +377,10 @@ describe("mem init", () => {
   it("initializes a store already populated by insert without disturbing its data", async () => {
     mkdirSync(join(root, NAMES.MEMORIES, NAMES.DATA), { recursive: true });
     writeFileSync(join(root, NAMES.MEMORIES, NAMES.DATA, "keep.txt"), "keep");
-    await init({ cwd: root, cliRoot });
+    await init({ cwd: web, cliRoot });
     expect(readFileSync(join(root, NAMES.MEMORIES, NAMES.DATA, "keep.txt"), "utf8")).toBe("keep");
+    expect(existsSync(join(root, NAMES.MEMORIES, NAMES.CONFIG_JSON))).toBe(true);
+    expect(existsSync(join(web, NAMES.MEMORIES))).toBe(false);
     expect(confirm).toHaveBeenCalledTimes(3);
   });
 
@@ -494,6 +598,7 @@ describe("mem init", () => {
   ])(
     "uses the $manager launcher for installation and version checks",
     async ({ agent, manager, args }) => {
+      existing({});
       published();
       vi.stubEnv("npm_config_user_agent", agent);
       installed("0.1.0");
@@ -508,6 +613,7 @@ describe("mem init", () => {
   );
 
   it("ignores repository lockfiles and packageManager when launched with npx", async () => {
+    existing({});
     vi.stubEnv("npm_config_user_agent", "npm/11.0.0 node/v22.0.0");
     writeFileSync(join(root, "pnpm-lock.yaml"), "");
     writeFileSync(join(web, "yarn.lock"), "");
