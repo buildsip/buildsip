@@ -12,7 +12,7 @@ import { readConfig } from "../read-config";
 import { writeText } from "../write-text";
 
 /**
- * Configures memories for the nearest package, falling back to the Git root.
+ * Configures the Git root first, then the nearest package on later runs.
  * Prompts before reconfiguring, preserves existing memories and unrelated settings,
  * and installs the global CLI before saving the chosen configuration.
  *
@@ -29,12 +29,15 @@ export async function init({
 }) {
   const root = await findRepo(cwd);
   // Starting in apps/web/src should configure apps/web, not create a store inside src.
-  const project =
+  const nearest =
     (await findUp({
       path: realpathSync(cwd),
       root,
       test: (path) => existsSync(join(path, NAMES.PACKAGE_JSON)),
     })) ?? root;
+  // Memories can exist before init runs. Only a root config counts as completed repo setup.
+  const repoConfig = await readConfig({ project: root, repo: root });
+  const project = repoConfig.source === undefined ? root : nearest;
   const manifest = join(project, NAMES.PACKAGE_JSON);
   const pkg = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")) : {};
   const name = typeof pkg.name === "string" && pkg.name.trim() ? pkg.name : basename(project);
@@ -43,9 +46,15 @@ export async function init({
   await assertNoSymlinks({ path: configPath, base: root });
   const directory = lstatSync(memories, { throwIfNoEntry: false });
   if (directory && !directory.isDirectory()) throw new Error(`Expected a directory: ${memories}`);
-  const { config, local, source } = await readConfig({ project, repo: root });
+  const { config, local, source } =
+    project === root ? repoConfig : await readConfig({ project, repo: root });
 
   intro("mem init");
+  if (project !== nearest) {
+    log.info(
+      `First-time setup: initializing the repository at ${root}. Run mem init again from this package to configure it.`,
+    );
+  }
   if (source !== undefined) {
     const update = await confirm({
       message: `${name} is already initialized. Reconfigure its settings?`,
@@ -159,7 +168,7 @@ export async function init({
 export function registerInitCommand({ program, cliRoot }: { program: Command; cliRoot: string }) {
   program
     .command("init")
-    .description("Initialize or reconfigure memories for the nearest package or Git root.")
+    .description("Initialize memories at the Git root first, then configure the nearest package.")
     .option("--verbose", "Print setup command output.")
     .action(async (options: { verbose?: boolean }) => {
       await init({ cwd: process.cwd(), cliRoot, verbose: options.verbose });

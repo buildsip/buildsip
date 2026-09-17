@@ -8,7 +8,7 @@
 - When a memory is updated => should double down as an upvote (meaning record it inside the tool as an upvote).
 - `get-recent-sessions`: works the same as buildsip CLI's `prepare` command.
 - `prune-memories`: Upvotes don't stack. Upvote on day 0 (human) → lives until day 180 (when `ttl` = 180). Upvote again on day 120 → lives until day 300 (when `humanUpvoteAdds` = 180).
-- `mem init` creates `.memories/config.json` at the nearest package root or Git root. `data/` is created by the first insert; there is no `.gitkeep`.
+- `mem init` creates `.memories/config.json` at the Git root first, even when run inside a nested package. Once that root config exists, init targets the nearest package root or falls back to the Git root. `data/` is created by the first insert; there is no `.gitkeep`.
 - Re-running `init` offers reconfiguration using current values, preserving custom config and existing memories.
 - `config.json` should also contain a `version` field.
 - `mem init` asks about pruning. Disabled is `prune: false`; enabled is an object of durations without an `enabled` flag. A package may omit `prune` to inherit its parent.

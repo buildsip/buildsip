@@ -1,8 +1,16 @@
 # API reference
 
-`--roots` and `--repo` are required flags on every command below.
+`--roots` and `--repo` are required flags on `mem insert` and `mem update`.
 
 Both write commands return a one-element JSON array containing the saved absolute `memory.md` path. Use that returned path for later calls, since an update can rename or move the folder.
+
+## `mem init`
+
+Run interactively from anywhere inside a Git working tree. If the Git root has no `.memories/config.json`, init configures that root, even when launched inside a nested package. An existing `.memories/` folder or package config alone does not count as repository setup. Existing memories and package configs are preserved.
+
+Once the root config exists, init configures the nearest directory containing `package.json`, falling back to the Git root. Running from a package's `src/` directory therefore configures the package. Run init again from the same package after first-time repository setup to create its own `.memories/config.json`.
+
+The target's config and inherited configs are validated before prompting. Init offers to reconfigure an existing target config, asks about pruning and editor tab labels, and asks about workspace sharing only when configuring the Git root. Use `--verbose` to print setup command output.
 
 ## `mem insert`
 
