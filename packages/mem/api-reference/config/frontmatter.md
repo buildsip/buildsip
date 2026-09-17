@@ -20,7 +20,13 @@ Define `custom` only in the Git root [`.memories/config.json`](../file-conventio
 
 Custom fields go next to [`title`](../memory/title.md) in YAML and in insert/update JSON, not inside a nested `custom` object.
 
-Undeclared extra fields are rejected. [`insert`](../cli/insert.md) and [`update`](../cli/update.md) always validate against this schema. [`search`](../cli/search.md) does too. [`delete`](../cli/delete.md) and [`update`](../cli/update.md) can still find an existing memory after the schema changes; publishing an update must pass the current schema.
+[`insert`](../cli/insert.md) and [`update`](../cli/update.md) validate the complete memory against the current schema before writing. Without a custom schema, extra fields are rejected.
+
+## Schema changes
+
+Existing files are not migrated or revalidated against custom schema changes when read. [`search`](../cli/search.md) keeps their custom fields searchable, and [`delete`](../cli/delete.md) can still remove them. Built-in fields such as `id`, `title`, and protection flags are always validated.
+
+Adding an optional field leaves old memories valid. Adding a required field leaves old memories searchable, but the next insert or update must include it. For example, after adding `"required": ["ticket"]`, updating an old memory without `ticket` fails until it is supplied in `frontmatter`.
 
 ## Related
 

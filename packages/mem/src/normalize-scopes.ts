@@ -23,7 +23,7 @@ export function normalizeScopes(scopes: string[]) {
           path.includes("\0")
         ) {
           throw new Error(
-            `Replace scope ${JSON.stringify(scope)} with a nonempty repository-relative file or directory path. Use "*" for the whole repo; absolute paths, exclusions, and .. are not allowed.`,
+            `Invalid scope: ${JSON.stringify(scope)}. Use a nonempty repository-relative file or directory path. Use "*" for the whole repo; absolute paths, exclusions, and .. are not allowed.`,
           );
         }
         // Brackets and parentheses stay literal so Next.js routes like (auth)/[id] work.

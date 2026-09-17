@@ -12,23 +12,20 @@ import { readMemory } from "./read-memory";
  *
  * `availableToWorkspaceOnly` includes stores only when their repo root sets
  * `availableToWorkspace` to true.
- * `validateConfig: false` skips custom-field rules, allowing writes
- * and deletes to find old memories after config changes. Built-in fields are still checked.
+ * Reads validate built-in fields while preserving custom fields from older schemas.
  */
 export async function loadMemories({
   stores,
   repo,
   availableToWorkspaceOnly = false,
-  validateConfig = true,
 }: {
   stores: string[];
   repo: string;
   availableToWorkspaceOnly?: boolean;
-  validateConfig?: boolean;
 }) {
   const memories: Memory[] = [];
   for (const project of stores) {
-    const { config, availableToWorkspace } = await readConfig({ project, repo });
+    const { availableToWorkspace } = await readConfig({ project, repo });
     if (availableToWorkspaceOnly && !availableToWorkspace) continue;
     const data = join(project, NAMES.MEMORIES, NAMES.DATA);
     await assertNoSymlinks({ path: data, base: repo });
@@ -59,7 +56,6 @@ export async function loadMemories({
               path,
               project,
               repo,
-              config: validateConfig ? config : { frontmatter: { custom: {} } },
             }),
           ),
         )),

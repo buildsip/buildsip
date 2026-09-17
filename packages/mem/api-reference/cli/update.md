@@ -3,12 +3,11 @@
 `mem update` patches one existing memory. Only supplied fields change.
 
 ```bash filename="Terminal"
-mem update --roots /repo --repo /repo --input update.json
+mem update --roots /repo --repo /repo --path /repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect/memory.md --input update.json
 ```
 
 ```json
 {
-  "path": "/repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect/memory.md",
   "body": "Updated explanation."
 }
 ```
@@ -23,19 +22,19 @@ A missing path is an error. Update never creates a memory.
 | --- | --- |
 | [`--roots <path...>`](./index.md#--roots) | Workspace directories. Required. |
 | [`--repo <path>`](./index.md#--repo) | Git root. Required. |
+| `--path <path>` | Existing `memory.md` file or its directory. Required. |
 | [`--input <file>`](./index.md#--input) | JSON file, or `-` for stdin. |
+
+`--path` resolves relative paths from the CLI working directory. The file must live in a `.memories/data` store of `--repo`.
 
 ### Input
 
 | Field | Type | Required |
 | --- | --- | --- |
-| `path` | nonempty string | Yes |
 | `body` | nonempty string | No |
 | `frontmatter` | object | No |
 
-Unknown top-level keys are rejected.
-
-`path` is an existing `memory.md` file or its directory. Relative paths resolve from the CLI working directory. The file must live in a `.memories/data` store of `--repo`.
+Unknown top-level keys, including `path`, are rejected. Select the memory with `--path`.
 
 Omitted `body` and omitted `frontmatter` keys keep their stored values, including custom fields and [scope](../memory/scope.md). `null` is a value, not a deletion. Removing fields is not supported.
 
@@ -58,7 +57,6 @@ Writes validate custom fields against the repository root schema before publicat
 
 ```json
 {
-  "path": "/repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect/memory.md",
   "frontmatter": {
     "title": "Axios reconnect retry"
   }
@@ -67,10 +65,10 @@ Writes validate custom fields against the repository root schema before publicat
 
 ### Directory path
 
-```json
-{
-  "path": "/repo/.memories/data/wrong-folder"
-}
+```bash filename="Terminal"
+mem update --roots /repo --repo /repo --path /repo/.memories/data/wrong-folder <<'EOF'
+{}
+EOF
 ```
 
 See [`title`](../memory/title.md).
@@ -79,7 +77,6 @@ See [`title`](../memory/title.md).
 
 ```json
 {
-  "path": "/repo/.memories/data/legacy-memory/memory.md",
   "frontmatter": {
     "scope": ["apps/web"]
   }

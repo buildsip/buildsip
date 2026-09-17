@@ -32,7 +32,6 @@ export async function deleteMemories({
   const memories = await loadMemories({
     stores,
     repo: workspace.repo,
-    validateConfig: false,
   });
   const byPath = new Map(memories.map((memory) => [memory.path, memory]));
   const selected = new Set<string>();

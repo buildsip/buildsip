@@ -37,7 +37,7 @@ export async function findStores({
         `Choose a scope inside ${project}; ${scopeStart} is outside that search directory.`,
       );
     }
-    // New files can still use ancestor memories even before their directories exist.
+    // Only directory scopes need downward discovery; files use their ancestor stores.
     const info = await statIfExists({ path: scopeStart, ignoreNotDirectory: true });
     if (info?.isDirectory()) scopeDirectories.push(scopeStart);
   }

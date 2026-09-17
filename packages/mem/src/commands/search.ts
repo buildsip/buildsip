@@ -8,6 +8,7 @@ import { loadMemories } from "../load-memories";
 import { matchesScope } from "../matches-scope";
 import { normalizeScopes } from "../normalize-scopes";
 import { resolveRepo } from "../resolve-repo";
+import { validateScopes } from "../validate-scopes";
 import type { Memory } from "../memory";
 
 let cached: { stamp: string; index: MiniSearch } | undefined;
@@ -38,7 +39,7 @@ export async function search({
   if (!Number.isSafeInteger(limit) || limit < 1 || !Number.isSafeInteger(offset) || offset < 0)
     throw new Error("limit must be a positive integer and offset a nonnegative integer.");
   const workspace = await resolveRepo({ roots, repo });
-  const scopes = normalizeScopes(scope);
+  const scopes = await validateScopes({ repo: workspace.repo, scope });
   const { stores } = await findStores({
     repo: workspace.repo,
     project: workspace.repo,
@@ -109,7 +110,7 @@ export function registerSearchCommand({ program }: { program: Command }) {
     .requiredOption("--query <text>", "Nonempty search query.")
     .option(
       "--scope <path...>",
-      "Repository-relative file or directory paths; directories include child packages. Defaults to * (the whole repo).",
+      "Existing repository-relative file or directory paths; directories include child packages. Defaults to * (the whole repo).",
     )
     .option("--limit <number>", "Maximum number of results.", "50")
     .option("--offset <number>", "Number of ranked results to skip.", "0")

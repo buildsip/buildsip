@@ -48,6 +48,7 @@ beforeEach(async () => {
     await mkdir(path, { recursive: true });
     await writeFile(join(path, NAMES.PACKAGE_JSON), "{}");
   }
+  await mkdir(join(web, "auth"));
   for (const repo of roots) execFileSync("git", ["init", "--quiet", repo]);
 });
 
@@ -275,7 +276,7 @@ describe("insert and update", () => {
   });
 
   it("places file and directory scopes in the nearest common package without prior init", async () => {
-    await mkdir(join(web, "src"));
+    await mkdir(join(web, "src", "commands"), { recursive: true });
     await writeFile(join(web, "src", "constants.ts"), "");
     const scopes = ["apps/web/src/commands", "apps/web/src/constants.ts"];
     const path = await memory({ title: "CLI internals", scope: scopes });
@@ -289,6 +290,8 @@ describe("insert and update", () => {
     const nested = join(web, "plugins", "auth");
     await mkdir(nested, { recursive: true });
     await writeFile(join(nested, NAMES.PACKAGE_JSON), "{}");
+    await mkdir(join(nested, "src"));
+    await writeFile(join(nested, "src", "session.ts"), "");
     const path = await memory({
       title: "Auth",
       scope: ["apps/web/plugins/auth/src", "apps/web/plugins/auth/src/session.ts"],
@@ -321,7 +324,7 @@ describe("insert and update", () => {
     expect(path).toBe(old);
     expect(await frontmatter(path)).not.toHaveProperty("scope");
     expect(
-      await search({ roots, repo: root, query: "Auth", scope: ["apps/web/billing"] }),
+      await search({ roots, repo: root, query: "Auth", scope: ["apps/web/package.json"] }),
     ).toHaveLength(1);
   });
 
@@ -383,6 +386,48 @@ describe("insert and update", () => {
         frontmatter: { title: "Wrong repo", scope: ["apps/web"] },
       }),
     ).rejects.toThrow("different Git repository");
+  });
+
+  it.each([
+    ["bad/bad/bad"],
+    ["apps/web/missing.ts"],
+    ["apps/web/package.json/child"],
+    ["apps/web", "bad/bad/bad"],
+    ["*", "bad/bad/bad"],
+  ])("rejects missing scopes %j before creating or updating any files", async (...scope) => {
+    await expect(memory({ title: "Invalid placement", scope })).rejects.toThrow(
+      "existing repository-relative file or directory",
+    );
+    for (const project of [root, web, api]) {
+      expect(existsSync(join(project, NAMES.MEMORIES))).toBe(false);
+    }
+    const path = await memory({ project: api, title: "Keep" });
+    const before = await readFile(path, "utf8");
+    await writeFile(join(dirname(path), "trace.txt"), "keep attachment");
+    await expect(edit({ path, title: "Changed", body: "changed", scope })).rejects.toThrow(
+      "existing repository-relative file or directory",
+    );
+    expect(await readFile(path, "utf8")).toBe(before);
+    expect(await readFile(join(dirname(path), "trace.txt"), "utf8")).toBe("keep attachment");
+    expect(existsSync(join(root, NAMES.MEMORIES))).toBe(false);
+    expect(existsSync(join(web, NAMES.MEMORIES))).toBe(false);
+    await expect(search({ roots, repo: root, query: "Keep", scope })).rejects.toThrow(
+      "existing repository-relative file or directory",
+    );
+  });
+
+  it("rejects existing scopes outside the repo, symlinks, and nested repos on update and search", async () => {
+    const path = await memory({ title: "Keep" });
+    const before = await readFile(path, "utf8");
+    await symlink(team, join(root, "outside"), "dir");
+    await symlink(web, join(root, "alias"), "dir");
+    execFileSync("git", ["init", "--quiet", api]);
+    for (const scope of [team, "../team", "outside", "alias/auth", "apps/api"]) {
+      await expect(memory({ title: "Bad", scope: [scope] })).rejects.toThrow();
+      await expect(edit({ path, scope: [scope] })).rejects.toThrow();
+      await expect(search({ roots, repo: root, query: "Keep", scope: [scope] })).rejects.toThrow();
+      expect(await readFile(path, "utf8")).toBe(before);
+    }
   });
 
   it("rejects symlinked scope paths", async () => {
@@ -524,6 +569,9 @@ describe("insert and update", () => {
 });
 
 describe("partial updates", () => {
+  it.each(["", " ", "memory\0.md"])("rejects invalid target paths: %j", async (path) => {
+    await expect(update({ roots, repo: root, path })).rejects.toThrow("Provide --path");
+  });
   it.each(["path", "body", "same title"])(
     "repairs a mismatched folder on a %s update",
     async (change) => {
@@ -680,6 +728,70 @@ describe("partial updates", () => {
 });
 
 describe("search", () => {
+  it("keeps old memories searchable after adding a required custom field, and validates new writes", async () => {
+    const paths = [];
+    for (const project of [root, web, team]) {
+      paths.push(await memory({ project, title: "Legacy cache" }));
+    }
+    await config({ project: team, value: { availableToWorkspace: true } });
+    const before = await Promise.all(paths.map((path) => readFile(path, "utf8")));
+    expect(await search({ roots, repo: root, query: "Legacy" })).toHaveLength(3);
+    const custom = { properties: { ticket: { type: "string" } }, required: ["ticket"] };
+    await config({ project: root, value: { frontmatter: { custom } } });
+    await config({ project: team, value: { availableToWorkspace: true, frontmatter: { custom } } });
+    expect(await search({ roots, repo: root, query: "Legacy" })).toHaveLength(3);
+    expect(await Promise.all(paths.map((path) => readFile(path, "utf8")))).toEqual(before);
+    await expect(memory({ project: web, title: "Missing ticket" })).rejects.toThrow(
+      "frontmatter.ticket",
+    );
+    await expect(edit({ path: paths[1]!, body: "Updated" })).rejects.toThrow("frontmatter.ticket");
+    await edit({ path: paths[1]!, ticket: "ENG-1" });
+    expect(await frontmatter(paths[1]!)).toMatchObject({ ticket: "ENG-1" });
+    expect(await memory({ project: web, title: "New cache", ticket: "ENG-2" })).toBeTypeOf(
+      "string",
+    );
+  });
+
+  it.each([
+    {},
+    { frontmatter: { custom: { properties: { ticket: { type: "number" } } } } },
+    { frontmatter: { custom: { properties: {}, additionalProperties: false } } },
+  ])("preserves and searches old custom fields after schema changes: %j", async (value) => {
+    await config({
+      project: root,
+      value: { frontmatter: { custom: { properties: { ticket: { type: "string" } } } } },
+    });
+    const path = await memory({ title: "Old ticket", ticket: "legacyticket" });
+    const before = await readFile(path, "utf8");
+    expect(await search({ roots, repo: root, query: "legacyticket" })).toHaveLength(1);
+    await config({ project: root, value });
+    const result = await search({ roots, repo: root, query: "legacyticket" });
+    expect(result).toHaveLength(1);
+    expect(result[0]?.frontmatter.ticket).toBe("legacyticket");
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  it("keeps memories readable when their stored scope no longer exists", async () => {
+    const path = await memory({ title: "Cache history", scope: ["apps/web/auth"] });
+    await rm(join(web, "auth"), { recursive: true });
+    expect((await search({ roots, repo: root, query: "history" }))[0]?.path).toBe(path);
+    expect(
+      (await search({ roots, repo: root, query: "history", scope: ["apps/web"] }))[0]?.path,
+    ).toBe(path);
+    await edit({ path, body: "Updated history" });
+    expect((await frontmatter(path)).scope).toEqual(["apps/web/auth"]);
+  });
+
+  it("still rejects invalid built-in fields without validating custom fields", async () => {
+    const path = await memory({ title: "Cache" });
+    await writeFile(
+      path,
+      `---\n${stringify({ ...(await frontmatter(path)), doNotEdit: "true" })}---\nbody\n`,
+    );
+    await expect(search({ roots, repo: root, query: "Cache" })).rejects.toThrow(
+      "frontmatter.doNotEdit",
+    );
+  });
   it("accepts a workspace folder containing the target repository", async () => {
     await memory({ title: "Cache rule" });
     expect(await search({ roots: [temp], repo: root, query: "cache" })).toHaveLength(1);
@@ -711,11 +823,12 @@ describe("search", () => {
     await memory({ title: "Cache api-only", scope: ["apps/api"] });
     const sibling = await memory({ project: api, title: "Cache sibling" });
     await writeFile(sibling, "invalid YAML memory");
+    await writeFile(join(web, "auth", "session.ts"), "");
     const result = await search({
       roots,
       repo: root,
       query: "cache",
-      scope: ["apps/web/src/new-file.ts"],
+      scope: ["apps/web/auth/session.ts"],
     });
     expect(result.map((entry) => entry.path).sort()).toEqual([local, global].sort());
   });
@@ -728,9 +841,9 @@ describe("search", () => {
     await mkdir(nested, { recursive: true });
     await writeFile(join(nested, NAMES.PACKAGE_JSON), "{}");
     const auth = await memory({ project: nested, title: "Cache auth" });
-    await memory({ title: "Cache unrelated", scope: ["packages/billing"] });
     const outside = join(root, "packages", "billing");
     await mkdir(outside, { recursive: true });
+    await memory({ title: "Cache unrelated", scope: ["packages/billing"] });
     await writeFile(join(outside, NAMES.PACKAGE_JSON), "{}");
     const bad = await memory({ project: outside, title: "Cache malformed sibling" });
     await writeFile(bad, "invalid YAML memory");
@@ -741,6 +854,9 @@ describe("search", () => {
   });
 
   it("matches literal file scopes and includes them when searching their directory", async () => {
+    await writeFile(join(web, "auth", "session.ts"), "");
+    await writeFile(join(web, "auth", "logout.ts"), "");
+    await mkdir(join(web, "auth-old"));
     const exact = await memory({ title: "Cache session", scope: ["apps/web/auth/session.ts"] });
     const directory = await memory({ project: web, title: "Cache auth", scope: ["apps/web/auth"] });
     await memory({ title: "Cache other file", scope: ["apps/web/auth/logout.ts"] });
@@ -768,6 +884,7 @@ describe("search", () => {
       scope: ["apps/web/app/(auth)/[id]"],
     });
     const child = await memory({ project: nested, title: "Cache form" });
+    await mkdir(join(web, "app", "(auth)", "i"));
     await memory({
       project: web,
       title: "Cache different route",
@@ -867,6 +984,7 @@ describe("search", () => {
     const child = join(team, "team-rules");
     await mkdir(child);
     await writeFile(join(child, NAMES.PACKAGE_JSON), "{}");
+    await mkdir(join(child, "unrelated"));
     const parent = await memory({ project: team, title: "Cache root" });
     const nested = await memory({
       project: child,
@@ -917,9 +1035,7 @@ describe("search", () => {
     expect(await search({ roots, repo: root, query: "before" })).toHaveLength(0);
     expect(await search({ roots, repo: root, query: "after" })).toHaveLength(1);
     await config({ project: root, value: { frontmatter: { custom: { required: ["ticket"] } } } });
-    await expect(search({ roots, repo: root, query: "after" })).rejects.toThrow(
-      "custom frontmatter",
-    );
+    expect(await search({ roots, repo: root, query: "after" })).toHaveLength(1);
     await rm(dirname(path), { recursive: true });
     expect(await search({ roots, repo: root, query: "after" })).toEqual([]);
   });
@@ -1008,14 +1124,64 @@ describe("delete", () => {
 });
 
 describe("built CLI", () => {
-  it("reads a path-only repair from a JSON file using a relative folder path", async () => {
+  it("requires --path even when the legacy JSON contains a path", async () => {
+    const path = await memory({ title: "Keep" });
+    const before = await readFile(path, "utf8");
+    const result = run({
+      args: ["update", "--roots", root, "--repo", root],
+      input: JSON.stringify({ path, body: "Changed" }),
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(JSON.parse(result.stderr).error).toContain("--path");
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  it.each(["insert", "update", "search"])(
+    "reports a nonexistent scope as a JSON error for %s",
+    async (command) => {
+      const path = await memory({ project: web, title: "Keep" });
+      const before = await readFile(path, "utf8");
+      const flags =
+        command === "update"
+          ? ["--path", path]
+          : command === "search"
+            ? ["--query", "Keep", "--scope", "bad/bad/bad"]
+            : [];
+      const result = run({
+        args: [command, "--roots", root, "--repo", root, ...flags],
+        input: JSON.stringify({
+          body: "Changed",
+          frontmatter: { title: "Bad", scope: ["bad/bad/bad"] },
+        }),
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(JSON.parse(result.stderr).error).toContain('Replace scope "bad/bad/bad"');
+      expect(await readFile(path, "utf8")).toBe(before);
+      expect(existsSync(join(root, NAMES.MEMORIES))).toBe(false);
+    },
+  );
+  it("reads an empty patch from a JSON file with a relative --path", async () => {
     const path = await memory({ title: "Repair" });
     const before = await frontmatter(path);
     const wrong = join(dirname(dirname(path)), "wrong-folder");
     await rename(dirname(path), wrong);
     const input = join(root, "update.json");
-    await writeFile(input, JSON.stringify({ path: relative(root, wrong) }));
-    const result = run({ args: ["update", "--roots", root, "--repo", root, "--input", input] });
+    await writeFile(input, "{}");
+    const result = run({
+      args: [
+        "update",
+        "--roots",
+        root,
+        "--repo",
+        root,
+        "--path",
+        relative(root, wrong),
+        "--input",
+        input,
+      ],
+    });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toBe("");
     expect(JSON.parse(result.stdout)).toEqual([path]);
@@ -1026,19 +1192,19 @@ describe("built CLI", () => {
     expect(existsSync(wrong)).toBe(false);
   });
 
-  it.each(["id", "missing path", "empty title"])(
+  it.each(["id", "path in JSON", "empty title"])(
     "rejects update input with %s before writing",
     async (invalid) => {
       const path = await memory({ title: "Keep" });
       const before = await readFile(path, "utf8");
       const input =
         invalid === "id"
-          ? { path, frontmatter: { id: (await frontmatter(path)).id } }
+          ? { frontmatter: { id: (await frontmatter(path)).id } }
           : invalid === "empty title"
-            ? { path, frontmatter: { title: "" } }
-            : { body: "new content" };
+            ? { frontmatter: { title: "" } }
+            : { path, body: "new content" };
       const result = run({
-        args: ["update", "--roots", root, "--repo", root],
+        args: ["update", "--roots", root, "--repo", root, "--path", path],
         input: JSON.stringify(input),
       });
       expect(result.status).toBe(1);
@@ -1119,10 +1285,9 @@ describe("built CLI", () => {
     expect(path).toContain(join(web, NAMES.MEMORIES));
     const id = (await frontmatter(path)).id;
     const updated = run({
-      args: ["update", ...args],
+      args: ["update", ...args, "--path", path],
       input: JSON.stringify({
         body: "changed body",
-        path,
         frontmatter: { title: "Updated note", scope: ["apps/api"] },
       }),
     });
@@ -1140,11 +1305,14 @@ describe("built CLI", () => {
     "rejects a package as --repo for %s",
     (command) => {
       const flags =
-        command === "search" ? ["--query", "note"] : command === "delete" ? ["--path", web] : [];
+        command === "search"
+          ? ["--query", "note"]
+          : ["delete", "update"].includes(command)
+            ? ["--path", web]
+            : [];
       const result = run({
         args: [command, "--roots", root, "--repo", web, ...flags],
         input: JSON.stringify({
-          ...(command === "update" ? { path: web } : {}),
           body: "body",
           frontmatter: { title: "Note", scope: ["*"] },
         }),
@@ -1185,10 +1353,9 @@ describe("built CLI", () => {
     const [path] = JSON.parse(created.stdout);
     expect((await search({ roots, repo: root, query: "Cache" }))[0]?.body).toBe(body);
     const updated = run({
-      args: ["update", ...args, "--input", "-"],
+      args: ["update", ...args, "--path", path, "--input", "-"],
       input: JSON.stringify({
         body: "Updated body",
-        path,
       }),
     });
     expect(updated.status, updated.stderr).toBe(0);
@@ -1200,9 +1367,8 @@ describe("built CLI", () => {
       doNotDelete: true,
     });
     const unprotected = run({
-      args: ["update", ...args],
+      args: ["update", ...args, "--path", path],
       input: JSON.stringify({
-        path,
         body: "Updated again",
         frontmatter: {
           doNotDelete: false,
@@ -1227,9 +1393,8 @@ describe("built CLI", () => {
     const [path] = JSON.parse(created.stdout);
     const before = await readFile(path, "utf8");
     const updated = run({
-      args: ["update", ...args],
+      args: ["update", ...args, "--path", path],
       input: JSON.stringify({
-        path,
         body: "Changed",
         frontmatter: { doNotEdit: false },
       }),

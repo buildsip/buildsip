@@ -44,6 +44,10 @@ Root `.memories/config.json`:
 }
 ```
 
+### Changing the schema
+
+Existing memories remain searchable when you add, change, or remove custom field rules. Their files are not rewritten. Newly created or edited memories must satisfy the current schema.
+
 ## prune
 
 Optional. Default value:
