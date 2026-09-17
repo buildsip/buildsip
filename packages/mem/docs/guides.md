@@ -21,7 +21,7 @@
 Use `AGENTS.md` and skills for rules.
 
 3. **Write the memory when you solve it.** Don't scrape old chats later to "distill" memories.
-4. **Put the memory in the right location.** If a memory provides context only useful for `apps/web`, add it to `apps/web/.memories`, not to the root `.memories` directory.
+4. **Use the narrowest accurate scope.** If a memory provides context only useful for `apps/web`, the agent will automatically create the memory in `apps/web/.memories`.
 5. **Directory names act as search tags, so they matter when searching memories.** Use straightforward names, like `errors/`, `gotchas/`, `decisions/`, `architecture/`.
 6. **Frontmatter fields act as search tags, so you may create your own custom tags,** e.g. `kind`, `anchors`, Linear URLs, etc.
 7. **Prefer a custom `retireWhen` field** when you can name an objective test for making this memory obsolete:
@@ -33,4 +33,4 @@ retireWhen:
     - https://sentry.io/organizations/acme/issues/12345/
 ```
 
-Defining obsolescence up front turns pruning from a guess into a fast, deterministic check for both agents and humans. Add `retireWhen` to [`frontmatter.custom` in `config.json`](./config.md#custom) if you use it.
+Defining obsolescence up front turns pruning from a guess into a fast, deterministic check for both agents and humans. Add `retireWhen` to the [schema](./config.md#custom) if you use it.
