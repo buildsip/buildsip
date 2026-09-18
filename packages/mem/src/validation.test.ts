@@ -89,7 +89,7 @@ it("names unknown top-level keys and explains where memory fields belong", () =>
   );
 });
 
-it("keeps nested stored-scope errors visible inside a union", () => {
+it("reports the invalid entry in a stored scope array", () => {
   expect(() =>
     validateFrontmatter({
       value: { id: "id", title: "Title", scope: ["apps/web", 1] },
@@ -99,6 +99,24 @@ it("keeps nested stored-scope errors visible inside a union", () => {
   ).toThrow(
     /Expected a repository-relative file or directory path[^\n]*\n  → at frontmatter.scope\[1\]/,
   );
+});
+
+it.each(["apps/web", "*", []])("rejects stored scope outside the array contract: %j", (scope) => {
+  expect(() =>
+    validateFrontmatter({
+      value: { id: "id", title: "Title", scope },
+      config: {},
+      path: "/repo/memory.md",
+    }),
+  ).toThrow("frontmatter.scope");
+});
+
+it("requires the stored ID while allowing scope to be inherited", () => {
+  const value = { id: "id", title: "Title" };
+  expect(validateFrontmatter({ value, config: {}, path: "/repo/memory.md" })).toEqual(value);
+  expect(() =>
+    validateFrontmatter({ value: { title: "Title" }, config: {}, path: "/repo/memory.md" }),
+  ).toThrow("frontmatter.id");
 });
 
 it("keeps Ajv custom schema validation and reports required fields, array indices, and enum choices", () => {

@@ -2,12 +2,12 @@ import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import type { ValidateFunction } from "ajv";
 import { z } from "zod";
-import { frontmatterSchema } from "./frontmatter-schema";
+import { storedFrontmatterSchema } from "./stored-frontmatter-schema";
 import { formatSchemaErrors } from "./format-schema-errors";
 import { parseValue } from "./parse-value";
 import type { Config } from "./read-config";
 
-export type Frontmatter = z.infer<typeof frontmatterSchema>;
+export type Frontmatter = z.infer<typeof storedFrontmatterSchema>;
 
 const ajv = new Ajv({ allErrors: true, strict: false, logger: false, verbose: true });
 addFormats(ajv);
@@ -28,7 +28,7 @@ export function validateFrontmatter({
   path: string;
 }): Frontmatter {
   const frontmatter = parseValue({
-    schema: frontmatterSchema,
+    schema: storedFrontmatterSchema,
     value,
     label: `frontmatter ${path}`,
     path: ["frontmatter"],

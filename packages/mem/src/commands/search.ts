@@ -1,6 +1,6 @@
 import { relativePosix } from "@buildsip/file-utils";
 import type { Command } from "commander";
-import { relative } from "node:path";
+import { dirname, relative } from "node:path";
 import MiniSearch from "minisearch";
 import { findRepo } from "../find-repo";
 import { findStores } from "../find-stores";
@@ -18,7 +18,7 @@ let cached: { stamp: string; index: MiniSearch } | undefined;
  * set availableToWorkspace.
  * Local scopes filter which memories apply; results are ranked before pagination.
  *
- * @returns Memory paths, scores, frontmatter, and bodies for the requested page.
+ * @returns Memory directory paths, scores, frontmatter, and bodies for the requested page.
  */
 export async function search({
   roots,
@@ -50,7 +50,7 @@ export async function search({
     if (scopes.some((value) => ["*", "."].includes(value))) return true;
     // Without an explicit scope, a memory applies to its owning package (or . for the repo).
     const owner = relativePosix({ from: workspace.repo, to: memory.project }) || ".";
-    const appliesTo = normalizeScopes([memory.frontmatter.scope ?? owner].flat());
+    const appliesTo = normalizeScopes(memory.frontmatter.scope ?? [owner]);
     // Check both directions: searching a folder should also find memories scoped to its files.
     return scopes.some((path) =>
       appliesTo.some(
@@ -94,7 +94,12 @@ export async function search({
     .slice(offset, offset + limit)
     .map(({ id, score }) => {
       const memory = byPath.get(String(id))!;
-      return { path: memory.path, score, frontmatter: memory.frontmatter, body: memory.body };
+      return {
+        path: dirname(memory.path),
+        score,
+        frontmatter: memory.frontmatter,
+        body: memory.body,
+      };
     });
 }
 

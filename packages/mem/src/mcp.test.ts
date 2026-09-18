@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -91,11 +91,18 @@ describe("MCP stdio server", () => {
     const fields = insert.inputSchema.properties!.frontmatter as Tool["inputSchema"];
     expect(fields.required).toEqual(["title", "scope"]);
     expect(fields.additionalProperties).toEqual({});
+    expect(fields.properties).not.toHaveProperty("id");
+    expect(fields.properties!.title).toMatchObject({ type: "string", minLength: 1 });
+    expect(fields.properties!.scope).toMatchObject({ type: "array", minItems: 1 });
     for (const field of Object.values(fields.properties ?? {})) {
       expect(field).toHaveProperty("description", expect.any(String));
     }
     const update = tools.find((tool) => tool.name === "update-memory")!;
     expect(update.inputSchema.required).toEqual(["roots", "repo", "path"]);
+    const patch = update.inputSchema.properties!.frontmatter as Tool["inputSchema"];
+    expect(patch.required ?? []).toEqual([]);
+    expect(patch.properties).not.toHaveProperty("id");
+    expect(patch.properties!.scope).toMatchObject({ type: "array", minItems: 1 });
     expect(stderr).toBe("");
   });
 
@@ -110,6 +117,15 @@ describe("MCP stdio server", () => {
     });
     expect(created.isError).toBeUndefined();
     const [path] = JSON.parse(text(created));
+    expect(path).toBe(join(repo, ".memories/data/cache-responses"));
+    const file = join(path, "memory.md");
+    const before = await readFile(file, "utf8");
+    for (const name of ["update-memory", "delete-memories"]) {
+      const result = await call({ name, args: { path: name === "update-memory" ? file : [file] } });
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("existing memory directory");
+      expect(await readFile(file, "utf8")).toBe(before);
+    }
     const found = JSON.parse(
       text(await call({ name: "search-memories", args: { query: "cache" } })),
     );
@@ -117,12 +133,12 @@ describe("MCP stdio server", () => {
     const updated = await call({
       name: "update-memory",
       args: {
-        path: relative(repo, dirname(path)),
+        path: relative(repo, path),
         frontmatter: { title: "Package cache", scope: ["apps/web"] },
       },
     });
     const [next] = JSON.parse(text(updated));
-    expect(next).toBe(join(repo, "apps/web/.memories/data/package-cache/memory.md"));
+    expect(next).toBe(join(repo, "apps/web/.memories/data/package-cache"));
     expect(existsSync(path)).toBe(false);
     const page = JSON.parse(
       text(
@@ -133,6 +149,7 @@ describe("MCP stdio server", () => {
       ),
     );
     expect(page[0].frontmatter.id).toBe(found[0].frontmatter.id);
+    expect(page[0].path).toBe(next);
     expect(page[0].body).toBe(found[0].body);
     expect(
       JSON.parse(
@@ -140,7 +157,7 @@ describe("MCP stdio server", () => {
       ),
     ).toEqual([]);
     expect(
-      JSON.parse(text(await call({ name: "delete-memories", args: { path: [dirname(next)] } }))),
+      JSON.parse(text(await call({ name: "delete-memories", args: { path: [next] } }))),
     ).toEqual([next]);
     expect(existsSync(next)).toBe(false);
     expect(stderr).toBe("");
@@ -172,10 +189,10 @@ describe("MCP stdio server", () => {
     expect(text(unknown)).toContain("old-tool-name not found");
     const missing = await call({
       name: "delete-memories",
-      args: { path: [join(repo, "missing", "memory.md")] },
+      args: { path: [join(repo, "missing")] },
     });
     expect(missing.isError).toBe(true);
-    expect(text(missing)).toContain("search again");
+    expect(text(missing)).toContain("Search again");
     expect(
       JSON.parse(text(await call({ name: "search-memories", args: { query: "cache" } }))),
     ).toEqual([]);

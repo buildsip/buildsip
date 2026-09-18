@@ -24,4 +24,4 @@ Searches memories using [`mem-cli search`](../cli/search.md)'s ranking and store
 
 ## Returns
 
-A ranked JSON array of `{ path, score, frontmatter, body }`. Paths are absolute. Shared repositories contribute memories according to [`availableToWorkspace`](../config/availableToWorkspace.md).
+A ranked JSON array of `{ path, score, frontmatter, body }`. Paths are absolute memory directories. Shared repositories contribute memories according to [`availableToWorkspace`](../config/availableToWorkspace.md).

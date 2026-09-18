@@ -1,7 +1,7 @@
 import { assertNoSymlinks } from "@buildsip/file-utils";
 import { readFile, stat } from "node:fs/promises";
 import { parseDocument } from "yaml";
-import { frontmatterSchema } from "./frontmatter-schema";
+import { storedFrontmatterSchema } from "./stored-frontmatter-schema";
 import { parseValue } from "./parse-value";
 import type { Memory } from "./memory";
 
@@ -43,7 +43,7 @@ export async function readMemory({
     cache.set(path, parsed);
   }
   const frontmatter = parseValue({
-    schema: frontmatterSchema,
+    schema: storedFrontmatterSchema,
     value: parsed.frontmatter,
     label: `frontmatter ${path}`,
     path: ["frontmatter"],

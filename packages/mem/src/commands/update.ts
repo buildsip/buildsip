@@ -1,22 +1,21 @@
-import { assertNoSymlinks, isInside, lstatIfExists } from "@buildsip/file-utils";
+import { isInside } from "@buildsip/file-utils";
 import type { Command } from "commander";
-import { realpath } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname } from "node:path";
 import type { z } from "zod";
 import { findRepo } from "../find-repo";
 import { findStores } from "../find-stores";
 import { loadMemories } from "../load-memories";
-import { NAMES } from "../names";
 import { parseValue } from "../parse-value";
 import { placeMemory } from "../place-memory";
 import { readJsonInput } from "../read-json-input";
 import { resolveRepo } from "../resolve-repo";
+import { resolveMemoryFile } from "../resolve-memory-file";
 import { saveMemory } from "../save-memory";
 import { updateSchema } from "../update-schema";
 
 /**
  * Updates only supplied fields on an existing memory; its stored ID never changes.
- * Even a path-only update repairs the title folder and returns the resulting path in an array.
+ * Even a path-only update repairs the title folder and returns its directory path in an array.
  */
 export async function update({
   roots,
@@ -29,30 +28,8 @@ export async function update({
   path: string;
 }) {
   const input = parseValue({ schema: updateSchema, value, label: "update input" });
-  // Direct callers need the same actionable flag guidance as CLI callers.
-  if (typeof target !== "string" || !target.trim() || target.includes("\0")) {
-    throw new Error(
-      "Provide --path with the path to an existing memory.md file or its directory, without NUL characters.",
-    );
-  }
   const workspace = await resolveRepo({ roots, repo });
-  // Relative paths follow the CLI working directory, just like delete paths and --input.
-  const path = resolve(target);
-  await assertNoSymlinks({ path, base: workspace.repo });
-  const info = await lstatIfExists({ path });
-  const file = info?.isDirectory() ? join(path, NAMES.MEMORY_MD) : path;
-  await assertNoSymlinks({ path: file, base: workspace.repo });
-  if (basename(file) !== NAMES.MEMORY_MD) {
-    throw new Error(
-      `Provide --path with an existing ${NAMES.MEMORY_MD} file or its directory: ${target}`,
-    );
-  }
-  if (!(await lstatIfExists({ path: file }))?.isFile()) {
-    throw new Error(
-      `No memory exists at ${file}. Search again and use its current path; use insert to create a new memory.`,
-    );
-  }
-  const canonical = await realpath(file);
+  const canonical = await resolveMemoryFile({ path: target, repo: workspace.repo });
   if ((await findRepo(dirname(canonical))) !== workspace.repo) {
     throw new Error(
       `Choose a memory in ${workspace.repo}; ${target} belongs to a different Git repository.`,
@@ -68,7 +45,7 @@ export async function update({
   }
   if (existing.frontmatter.doNotEdit) {
     throw new Error(
-      `You cannot edit this memory because doNotEdit is true: ${existing.path}. Ask the user to edit it.`,
+      `You cannot edit this memory because doNotEdit is true: ${dirname(existing.path)}. Ask the user to edit it.`,
     );
   }
   if (
@@ -120,12 +97,9 @@ export function registerUpdateCommand({ program }: { program: Command }) {
       "Workspace directories; repeat the flag or provide multiple paths.",
     )
     .requiredOption("--repo <path>", "Git root of the workspace project the agent is working on.")
-    .requiredOption(
-      "--path <path>",
-      "Existing memory.md file or its directory, returned by search.",
-    )
+    .requiredOption("--path <path>", "Existing memory directory returned by a memory command.")
     .description(
-      "Update the memory selected by --path from JSON with optional body and frontmatter. Omitted fields keep their values; omit id. Use {} to only repair the title folder. Every update repairs the title folder if needed. Use the returned path for subsequent calls.",
+      "Update the memory selected by --path from JSON with optional body and frontmatter. Omitted fields keep their values. Use {} to only repair the title folder. Every update repairs the title folder if needed. Use the returned path for subsequent calls.",
     )
     .option("--input <file>", "Read one memory JSON object from a file; omit or use - for stdin.")
     .action(async (options: { roots: string[]; repo: string; path: string; input?: string }) => {

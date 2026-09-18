@@ -8,10 +8,12 @@ mem-cli search --roots /repo --repo /repo --query "axios retry"
 
 Stdout is a JSON array. No matches print `[]`.
 
+Returned paths are absolute memory directories and can be passed to [`update`](./update.md) or [`delete`](./delete.md).
+
 ```json
 [
   {
-    "path": "/repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect/memory.md",
+    "path": "/repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect",
     "score": 3.2,
     "frontmatter": {
       "id": "11111111-1111-4111-8111-111111111111",

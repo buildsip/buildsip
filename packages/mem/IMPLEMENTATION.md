@@ -3,7 +3,6 @@
 - Every CLI invocation refreshes the global `mem-cli` MCP entry for detected agents through add-mcp's programmatic API. Register `mem-cli mcp` and named auto-approval for the four implemented tools. No prompts or version bookkeeping; warn and continue on missing agents or failed configs. See [MCP installation](./api-reference/mcp/installation.md).
 - MCP tools take a required `roots` argument: absolute paths to every workspace folder, not only the active repo. Pass `roots` through to the CLI. Support for exposing the current workspace or project path to MCP servers is inconsistent across the ecosystem (env vars, config interpolation, MCP `roots`, or nothing at all).
 - Memories MCP tools (NOT `get-recent-sessions`) also take a `repo` param: the Git root identifying the workspace project the agent is working on. Package directories are not accepted as `repo`.
-- The description of `insert-memory` should instruct the model to first call `search-memories` to make sure a duplicate/related memory that could be edited doesn't exist. It must also say: "Pass the narrowest scope that accurately covers this memory. Use \* only when it applies to the whole repository."
 - Memory directories should be named according to the title, e.g. `sentry-error/` where the title is "Sentry error"
 - When a memory is updated => should double down as an upvote (meaning record it inside the tool as an upvote).
 - `get-recent-sessions`: works the same as buildsip CLI's `prepare` command.

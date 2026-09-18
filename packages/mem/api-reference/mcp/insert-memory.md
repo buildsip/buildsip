@@ -19,11 +19,11 @@ Creates one memory using [`mem-cli insert`](../cli/insert.md)'s validation and p
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | [`roots`, `repo`](./index.md#shared-parameters) | — | Yes | Workspace and active repository. |
-| `body` | `string` | Yes | Nonempty Markdown content. |
-| `frontmatter` | `object` | Yes | Metadata with a nonempty `title` and `scope` array. Optional protection flags and configured custom fields are accepted. Omit `id`. |
+| `body` | `string` | Yes | Markdown content. |
+| `frontmatter` | `object` | Yes | Memory metadata and configured custom fields. See [insert input](../cli/insert.md#input). |
 
-Use the narrowest existing repository-relative scope that covers the memory. Use `["*"]` only for repository-wide memories. See [scope](../memory/scope.md).
+Choose the narrowest [scope](../memory/scope.md) where the memory provides useful context. For example, a login-session cookie rule used throughout authentication belongs to `["apps/web/auth"]`. Use `["*"]` only for context useful across the whole repository.
 
 ## Returns
 
-A JSON array containing the absolute path of the new `memory.md`. Use this path for subsequent calls.
+A JSON array containing the absolute path of the new memory directory. Use this path for subsequent calls.
