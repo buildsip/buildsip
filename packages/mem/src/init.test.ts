@@ -159,7 +159,7 @@ describe("mem-cli init", () => {
         .mock.calls.some(([, args]) => Array.isArray(args) && ["build", "view"].includes(args[0]!)),
     ).toBe(false);
     expect(confirm).toHaveBeenCalledTimes(3);
-    expect(outro).toHaveBeenCalledWith("@acme/monorepo initialized.");
+    expect(outro).toHaveBeenCalledWith("mem initialized.");
     expect(log.info).not.toHaveBeenCalled();
   });
 
@@ -183,7 +183,7 @@ describe("mem-cli init", () => {
       ["add", "-g", cliRoot],
       expect.objectContaining({ cwd: root }),
     );
-    expect(outro).toHaveBeenCalledWith("@acme/monorepo initialized.");
+    expect(outro).toHaveBeenCalledWith("mem initialized.");
   });
 
   it.each(["", "src"])(
@@ -204,7 +204,7 @@ describe("mem-cli init", () => {
       expect(readFileSync(join(root, NAMES.MEMORIES, NAMES.CONFIG_JSON), "utf8")).toBe("{}");
       expect(existsSync(join(web, "src", NAMES.MEMORIES))).toBe(false);
       expect(log.info).not.toHaveBeenCalled();
-      expect(outro).toHaveBeenCalledWith("@acme/web initialized.");
+      expect(outro).toHaveBeenCalledWith("mem initialized.");
       expect(existsSync(join(root, NAMES.VSCODE, NAMES.SETTINGS_JSON))).toBe(true);
     },
   );
@@ -222,7 +222,7 @@ describe("mem-cli init", () => {
       prune: false,
     });
     expect(confirm).toHaveBeenCalledTimes(2);
-    expect(outro).toHaveBeenLastCalledWith("@acme/web initialized.");
+    expect(outro).toHaveBeenLastCalledWith("mem initialized.");
   });
 
   it("preserves an existing package config while completing first-time repo setup", async () => {
@@ -252,13 +252,13 @@ describe("mem-cli init", () => {
     writeFileSync(path, source);
     await init({ cwd: join(web, "src"), cliRoot });
     expect(confirm).toHaveBeenCalledExactlyOnceWith({
-      message: "@acme/web is already initialized. Reconfigure its settings?",
+      message: "mem is already initialized. Reconfigure its settings?",
       initialValue: false,
     });
     expect(readFileSync(path, "utf8")).toBe(source);
     expect(readFileSync(join(root, NAMES.MEMORIES, NAMES.CONFIG_JSON), "utf8")).toBe("{}");
     expect(log.step).not.toHaveBeenCalled();
-    expect(outro).toHaveBeenCalledWith("@acme/web unchanged.");
+    expect(outro).toHaveBeenCalledWith("mem unchanged.");
   });
 
   it.each(["", '{"broken":', '{"version":2}'])(
@@ -275,7 +275,7 @@ describe("mem-cli init", () => {
     },
   );
 
-  it("uses a worktree's root and its folder name without a manifest", async () => {
+  it("initializes a worktree without a project manifest and uses the CLI package name", async () => {
     execFileSync(
       "git",
       [
@@ -301,7 +301,7 @@ describe("mem-cli init", () => {
     expect(existsSync(join(worktree, NAMES.MEMORIES, NAMES.CONFIG_JSON))).toBe(true);
     expect(existsSync(join(nested, NAMES.MEMORIES))).toBe(false);
     expect(existsSync(join(root, NAMES.MEMORIES))).toBe(false);
-    expect(outro).toHaveBeenCalledWith("worktree initialized.");
+    expect(outro).toHaveBeenCalledWith("mem initialized.");
   });
 
   it("fails outside Git before prompting or installing", async () => {
@@ -319,7 +319,7 @@ describe("mem-cli init", () => {
     );
     expect(confirm).toHaveBeenCalledOnce();
     expect(log.step).not.toHaveBeenCalled();
-    expect(outro).toHaveBeenCalledWith("@acme/monorepo unchanged.");
+    expect(outro).toHaveBeenCalledWith("mem unchanged.");
   });
 
   it("preserves custom settings, durations, and memories during reconfiguration", async () => {

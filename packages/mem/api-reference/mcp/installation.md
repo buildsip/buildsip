@@ -6,6 +6,8 @@ The registered process is `mem-cli mcp`. There is no installation prompt or save
 
 Other server entries are preserved. Configs for undetected agents are not created.
 
+During `init`, a success message lists the agents whose MCP configs were updated.
+
 ## Manual setup
 
 If detection finds no agents or a config cannot be written, the CLI warns on stderr and continues. Configure a stdio server named `mem-cli` with command `mem-cli` and arguments `["mcp"]`, then restart the agent's MCP connection.

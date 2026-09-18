@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { cancel } from "@clack/prompts";
+import { cancel, log } from "@clack/prompts";
 import { Command } from "commander";
 import { registerDeleteCommand } from "./commands/delete-memories";
 import { registerInitCommand } from "./commands/init";
@@ -38,11 +38,14 @@ program
 program.action(() => program.help());
 
 try {
-  // This also runs for help, version, and MCP startup. Never write setup messages to stdout:
-  // command output is JSON, and MCP clients reserve stdout for protocol messages.
-  await installMcp({
+  // This also runs for help, version, and MCP startup. Warnings go to stderr to keep JSON intact.
+  const agents = await installMcp({
     log: { warn: (message) => process.stderr.write(`${JSON.stringify({ warning: message })}\n`) },
   });
+  // Only interactive setup gets a success message; other commands keep their machine output.
+  if (process.argv[2] === "init" && agents.length) {
+    log.success(`Memory MCP tools added to:\n${agents.map((agent) => `- ${agent}`).join("\n")}`);
+  }
   await program.parseAsync(process.argv);
 } catch (error) {
   const code = (error as { code?: string }).code;

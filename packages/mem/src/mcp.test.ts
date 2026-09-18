@@ -266,18 +266,25 @@ describe("automatic MCP installation", () => {
     await mkdir(join(home, ".claude"));
     const config = join(home, ".cursor/mcp.json");
     const other = { command: "other-server", args: [] };
-    for (const arg of ["--help", "--version"]) {
+    for (const args of [["--help"], ["--version"], ["init", "--help"]]) {
       await writeFile(
         config,
         JSON.stringify({ mcpServers: { other, "mem-cli": { command: "old-mem", args: ["old"] } } }),
       );
-      const result = spawnSync(process.execPath, [cli, arg], {
+      const result = spawnSync(process.execPath, [cli, ...args], {
         cwd: repo,
         env: cliEnv({ home }),
         encoding: "utf8",
       });
       expect(result.status, result.stderr).toBe(0);
       expect(result.stderr).toBe("");
+      if (args[0] === "init") {
+        expect(result.stdout).toContain("Memory MCP tools added to:");
+        expect(result.stdout).toContain("- Cursor");
+        expect(result.stdout).toContain("- Claude Code");
+      } else {
+        expect(result.stdout).not.toContain("Memory MCP tools added to:");
+      }
       const next = JSON.parse(await readFile(config, "utf8"));
       expect(next.mcpServers).toEqual({ other, "mem-cli": { command: "mem-cli", args: ["mcp"] } });
     }

@@ -2,7 +2,11 @@ import { detectGlobalAgents, upsertServer } from "add-mcp";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { installMcp } from "./install-mcp";
 
-vi.mock("add-mcp", () => ({ detectGlobalAgents: vi.fn(), upsertServer: vi.fn() }));
+vi.mock("add-mcp", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("add-mcp")>()),
+  detectGlobalAgents: vi.fn(),
+  upsertServer: vi.fn(),
+}));
 const ctx = { log: { warn: vi.fn() } };
 
 beforeEach(() => {
@@ -13,8 +17,8 @@ beforeEach(() => {
 
 describe("installMcp", () => {
   it("refreshes every detected agent on every call with named approvals and global scope", async () => {
-    await installMcp(ctx);
-    await installMcp(ctx);
+    expect(await installMcp(ctx)).toEqual(["Cursor", "Claude Code"]);
+    expect(await installMcp(ctx)).toEqual(["Cursor", "Claude Code"]);
     expect(detectGlobalAgents).toHaveBeenCalledTimes(2);
     expect(upsertServer).toHaveBeenCalledTimes(4);
     for (const agent of ["cursor", "claude-code"]) {
@@ -39,7 +43,7 @@ describe("installMcp", () => {
 
   it("warns with manual setup instructions when no agents are detected", async () => {
     vi.mocked(detectGlobalAgents).mockResolvedValue([]);
-    await installMcp(ctx);
+    expect(await installMcp(ctx)).toEqual([]);
     expect(upsertServer).not.toHaveBeenCalled();
     expect(ctx.log.warn).toHaveBeenCalledWith(
       expect.stringContaining("api-reference/mcp/installation.md"),
@@ -53,7 +57,7 @@ describe("installMcp", () => {
       path: "/cursor/mcp.json",
       error: "Permission denied",
     });
-    await installMcp(ctx);
+    expect(await installMcp(ctx)).toEqual(["Claude Code"]);
     expect(upsertServer).toHaveBeenCalledTimes(2);
     expect(ctx.log.warn).toHaveBeenCalledWith(expect.stringContaining("Permission denied"));
     expect(ctx.log.warn).toHaveBeenCalledWith(expect.stringContaining("Fix this agent's config"));
@@ -63,10 +67,10 @@ describe("installMcp", () => {
     vi.mocked(upsertServer).mockImplementationOnce(() => {
       throw new Error("adapter failed");
     });
-    await installMcp(ctx);
+    expect(await installMcp(ctx)).toEqual(["Claude Code"]);
     expect(upsertServer).toHaveBeenCalledTimes(2);
     vi.mocked(detectGlobalAgents).mockRejectedValueOnce(new Error("detection failed"));
-    await expect(installMcp(ctx)).resolves.toBeUndefined();
+    await expect(installMcp(ctx)).resolves.toEqual([]);
     expect(ctx.log.warn).toHaveBeenCalledWith(expect.stringContaining("detection failed"));
   });
 });

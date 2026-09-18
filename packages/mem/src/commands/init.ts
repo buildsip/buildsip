@@ -1,7 +1,7 @@
 import { assertNoSymlinks, findUp, readTextIfExistsSync } from "@buildsip/file-utils";
 import type { Command } from "commander";
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { confirm, group, intro, isCancel, log, outro } from "@clack/prompts";
 import { applyEdits, findNodeAtLocation, modify, parseTree, type ParseError } from "jsonc-parser";
 import { findRepo } from "../find-repo";
@@ -38,9 +38,8 @@ export async function init({
   // Memories can exist before init runs. Only a root config counts as completed repo setup.
   const repoConfig = await readConfig({ project: root, repo: root });
   const project = repoConfig.source === undefined ? root : nearest;
-  const manifest = join(project, NAMES.PACKAGE_JSON);
-  const pkg = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")) : {};
-  const name = typeof pkg.name === "string" && pkg.name.trim() ? pkg.name : basename(project);
+  // Setup messages use the CLI package's name, regardless of the project being configured.
+  const { name } = JSON.parse(readFileSync(join(cliRoot, NAMES.PACKAGE_JSON), "utf8"));
   const memories = join(project, NAMES.MEMORIES);
   const configPath = join(memories, NAMES.CONFIG_JSON);
   await assertNoSymlinks({ path: configPath, base: root });
