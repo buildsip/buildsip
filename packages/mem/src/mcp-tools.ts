@@ -1,9 +1,11 @@
+import type { CallToolResult, TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { deleteMemories } from "./commands/delete-memories";
 import { insert } from "./commands/insert";
 import { search } from "./commands/search";
 import { update } from "./commands/update";
+import { describeMemory } from "./describe-memory";
 import { insertSchema } from "./insert-schema";
 import { parseValue } from "./parse-value";
 import { scopeSchema } from "./scope-schema";
@@ -44,18 +46,20 @@ const inputError = (issue: { code: string }) =>
     : "Provide one object matching this tool's input schema, including roots and repo.";
 
 /** Keeps each schema and its typed command together; callers can pass untrusted tool arguments. */
-function tool<T>({
+function tool<T, R>({
   name,
   description,
   schema,
   run,
+  instructions,
   readOnly = false,
   destructive = false,
 }: {
   name: string;
   description: string;
   schema: z.ZodType<T>;
-  run: (input: T) => Promise<unknown>;
+  run: (input: T) => Promise<R>;
+  instructions?: (args: { result: R; input: T }) => Promise<string>;
   readOnly?: boolean;
   destructive?: boolean;
 }) {
@@ -64,7 +68,16 @@ function tool<T>({
     description,
     schema,
     annotations: { readOnlyHint: readOnly, destructiveHint: destructive, openWorldHint: false },
-    call: (value: unknown) => run(parseValue({ schema, value, label: `${name} arguments` })),
+    call: async (value: unknown): Promise<CallToolResult> => {
+      const input = parseValue({ schema, value, label: `${name} arguments` });
+      const result = await run(input);
+      // Preserve the CLI's JSON result and add readable guidance as a separate text block.
+      const content: TextContent[] = [{ type: "text", text: JSON.stringify(result, null, 2) }];
+      if (instructions) {
+        content.push({ type: "text", text: await instructions({ result, input }) });
+      }
+      return { content };
+    },
   };
 }
 
@@ -75,6 +88,7 @@ export const mcpTools = [
     description: `Create one memory. Extra frontmatter keys must match frontmatter.custom in the repo-root ${NAMES.MEMORIES}/${NAMES.CONFIG_JSON}. No frontmatter.custom means no extra keys. Call search-memories first; if a related memory can be improved, use update-memory instead. Choose the narrowest scope where the memory provides useful context. For example, a login-session cookie rule used throughout authentication belongs to ["apps/web/auth"]. Use ["*"] only for context useful across the whole repository. Keep the returned path for later edits.`,
     schema: z.strictObject({ ...workspace, ...insertSchema.shape }, { error: inputError }),
     run: insert,
+    instructions: ({ result, input }) => describeMemory({ path: result[0]!, repo: input.repo }),
   }),
   tool({
     name: "update-memory",
@@ -84,6 +98,7 @@ export const mcpTools = [
       { error: inputError },
     ),
     run: update,
+    instructions: ({ result, input }) => describeMemory({ path: result[0]!, repo: input.repo }),
     destructive: true,
   }),
   tool({

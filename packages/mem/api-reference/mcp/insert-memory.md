@@ -26,4 +26,4 @@ Choose the narrowest [scope](../memory/scope.md) where the memory provides usefu
 
 ## Returns
 
-A JSON array containing the absolute path of the new memory directory. Use this path for subsequent calls.
+A JSON array containing the absolute path of the new memory directory, followed by a second text block with [categorization guidance and the store's directory listing](./index.md#categorization-guidance). Use the returned path for subsequent calls, or the new path if you move the memory.

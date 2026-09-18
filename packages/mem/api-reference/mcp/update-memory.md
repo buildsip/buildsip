@@ -24,4 +24,4 @@ Omitted fields retain their values. A path-only call repairs the title folder. [
 
 ## Returns
 
-A JSON array containing the resulting absolute memory directory path. Scope and title changes can move the memory; use the returned path for later calls.
+A JSON array containing the resulting absolute memory directory path, followed by a second text block with [categorization guidance and the destination store's directory listing](./index.md#categorization-guidance). Scope and title changes can move the memory; use the returned path for later calls, or the new path if you categorize it afterward.

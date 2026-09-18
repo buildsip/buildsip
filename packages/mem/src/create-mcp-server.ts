@@ -11,8 +11,7 @@ export function createMcpServer({ version }: { version: string }) {
       { description: tool.description, inputSchema: tool.schema, annotations: tool.annotations },
       async (input: unknown): Promise<CallToolResult> => {
         try {
-          const result = await tool.call(input);
-          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+          return await tool.call(input);
         } catch (error) {
           const message =
             error instanceof Error
