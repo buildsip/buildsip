@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,9 +53,17 @@ async function connect() {
 }
 
 function text(result: CallToolResult) {
-  expect(result.content).toHaveLength(1);
   const content = result.content[0]!;
   if (content.type !== "text") throw new Error("Expected a text result");
+  return content.text;
+}
+
+/** Write tools keep their JSON in the first block and add categorization guidance afterward. */
+function instructions(result: CallToolResult) {
+  expect(result.isError).toBeUndefined();
+  expect(result.content).toHaveLength(2);
+  const content = result.content[1]!;
+  if (content.type !== "text") throw new Error("Expected text instructions");
   return content.text;
 }
 
@@ -118,11 +126,16 @@ describe("MCP stdio server", () => {
     expect(created.isError).toBeUndefined();
     const [path] = JSON.parse(text(created));
     expect(path).toBe(join(repo, ".memories/data/cache-responses"));
+    expect(instructions(created)).toContain(
+      `anywhere within ${JSON.stringify(join(repo, ".memories/data"))}`,
+    );
+    expect(instructions(created).split("omitted):\n")[1]).toBe("data/");
     const file = join(path, "memory.md");
     const before = await readFile(file, "utf8");
     for (const name of ["update-memory", "delete-memories"]) {
       const result = await call({ name, args: { path: name === "update-memory" ? file : [file] } });
       expect(result.isError).toBe(true);
+      expect(result.content).toHaveLength(1);
       expect(text(result)).toContain("existing memory directory");
       expect(await readFile(file, "utf8")).toBe(before);
     }
@@ -139,6 +152,10 @@ describe("MCP stdio server", () => {
     });
     const [next] = JSON.parse(text(updated));
     expect(next).toBe(join(repo, "apps/web/.memories/data/package-cache"));
+    expect(instructions(updated)).toContain(
+      `anywhere within ${JSON.stringify(join(repo, "apps/web/.memories/data"))}`,
+    );
+    expect(instructions(updated)).not.toContain(JSON.stringify(join(repo, ".memories/data")));
     expect(existsSync(path)).toBe(false);
     const page = JSON.parse(
       text(
@@ -161,6 +178,36 @@ describe("MCP stdio server", () => {
     ).toEqual([next]);
     expect(existsSync(next)).toBe(false);
     expect(stderr).toBe("");
+  });
+
+  it("shows only the saved store's categories and searches tags after a manual move", async () => {
+    const data = join(repo, "apps/web/.memories/data");
+    for (const folder of ["network/http", "rendering/hydration", "state/zustand/selectors"]) {
+      await mkdir(join(data, folder), { recursive: true });
+    }
+    await mkdir(join(repo, ".memories/data/other-store"), { recursive: true });
+    await connect();
+    const created = await call({
+      name: "insert-memory",
+      args: { body: "Details", frontmatter: { title: "New note", scope: ["apps/web"] } },
+    });
+    const listing =
+      "data/\ndata/network/\ndata/network/http/\ndata/rendering/\ndata/rendering/hydration/\ndata/state/\ndata/state/zustand/\ndata/state/zustand/selectors/";
+    expect(instructions(created).split("omitted):\n")[1]).toBe(listing);
+    const [path] = JSON.parse(text(created));
+    await mkdir(join(path, "attachments"));
+    await writeFile(join(path, "attachments", "trace.txt"), "Keep with the memory");
+    const moved = join(data, "rendering/hydration/new-note");
+    await rename(path, moved);
+    const updated = await call({ name: "update-memory", args: { path: moved } });
+    expect(JSON.parse(text(updated))).toEqual([moved]);
+    expect(instructions(updated).split("omitted):\n")[1]).toBe(listing);
+    expect(await readFile(join(moved, "attachments", "trace.txt"), "utf8")).toBe(
+      "Keep with the memory",
+    );
+    const found = await call({ name: "search-memories", args: { query: "hydration" } });
+    expect(found.content).toHaveLength(1);
+    expect(JSON.parse(text(found))).toEqual([expect.objectContaining({ path: moved })]);
   });
 
   it("returns bare actionable errors and keeps the server available after invalid calls", async () => {
