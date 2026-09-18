@@ -1,6 +1,6 @@
 # Implementation plan
 
-- `npx mem-cli init` runs `npx add-mcp mem-cli` to install the MCP. Should offer option: install to all available agents or just to selected agents.
+- Every CLI invocation refreshes the global `mem-cli` MCP entry for detected agents through add-mcp's programmatic API. Register `mem-cli mcp` and named auto-approval for the four implemented tools. No prompts or version bookkeeping; warn and continue on missing agents or failed configs. See [MCP installation](./api-reference/mcp/installation.md).
 - MCP tools take a required `roots` argument: absolute paths to every workspace folder, not only the active repo. Pass `roots` through to the CLI. Support for exposing the current workspace or project path to MCP servers is inconsistent across the ecosystem (env vars, config interpolation, MCP `roots`, or nothing at all).
 - Memories MCP tools (NOT `get-recent-sessions`) also take a `repo` param: the Git root identifying the workspace project the agent is working on. Package directories are not accepted as `repo`.
 - The description of `insert-memory` should instruct the model to first call `search-memories` to make sure a duplicate/related memory that could be edited doesn't exist. It must also say: "Pass the narrowest scope that accurately covers this memory. Use \* only when it applies to the whole repository."
@@ -8,10 +8,10 @@
 - When a memory is updated => should double down as an upvote (meaning record it inside the tool as an upvote).
 - `get-recent-sessions`: works the same as buildsip CLI's `prepare` command.
 - `prune-memories`: Upvotes don't stack. Upvote on day 0 (human) → lives until day 180 (when `ttl` = 180). Upvote again on day 120 → lives until day 300 (when `humanUpvoteAdds` = 180).
-- `mem init` creates `.memories/config.json` at the Git root first, even when run inside a nested package. Once that root config exists, init targets the nearest package root or falls back to the Git root. `data/` is created by the first insert; there is no `.gitkeep`.
+- `mem-cli init` creates `.memories/config.json` at the Git root first, even when run inside a nested package. Once that root config exists, init targets the nearest package root or falls back to the Git root. `data/` is created by the first insert; there is no `.gitkeep`.
 - Re-running `init` offers reconfiguration using current values, preserving custom config and existing memories.
 - `config.json` should also contain a `version` field.
-- `mem init` asks about pruning. Disabled is `prune: false`; enabled is an object of durations without an `enabled` flag. A package may omit `prune` to inherit its parent.
+- `mem-cli init` asks about pruning. Disabled is `prune: false`; enabled is an object of durations without an `enabled` flag. A package may omit `prune` to inherit its parent.
 - `init` installs the already-built CLI globally using the launcher that invoked it: `npx` → npm, `pnpm dlx` → pnpm, and `bunx --bun` → Bun. Detect the launcher's `npm_config_user_agent` or Bun runtime; ignore repository lockfiles and `packageManager`. Direct invocation without launcher metadata falls back to npm. `yarn dlx` uses npm for global installation because modern Yarn removed global commands; Yarn Classic uses `yarn global add`. Published versions are checked for updates, and upgrades require confirmation.
 - `npx mem-cli init` should also ask the user if they want to do this:
 
@@ -38,6 +38,22 @@ Params for `search-memories`:
 - `roots` - required. Absolute paths to every workspace folder.
 - `scope`: an optional array of literal repository-relative file or directory paths. Directories include descendants. Omitted, `*`, or `.` means the whole repo; no other wildcard patterns are supported.
 - `query`
+
+### `get-recent-sessions`
+
+Fetches the recent sessions across agent harnesses. Useful when context for the memory lives in other conversations. Strips down a chat log to user messages, final assistant turn messages, roles (user, agent) and timestamps.
+
+#### Reporting stale memories
+
+After the search, the agent will inspect some of the memories to execute its original task. The `search-memories` tool also instructs the agent to report and offer to delete stale memories if found, e.g. memories that contradict the code.
+
+### `prune-memories`
+
+Returns memories older than `minimumAge`. This tool itself doesn't prune the memories, only returns candidates for pruning.
+
+### `upvote-memories`
+
+When a memory is used to produce a reply, the AI upvotes. You may also ask the AI to upvote a memory, in which case the log will record the `actor` is a human.
 
 # Planned for v2
 

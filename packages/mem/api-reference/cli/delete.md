@@ -1,9 +1,9 @@
-# mem delete
+# mem-cli delete
 
-`mem delete` removes memory folders, including attachments.
+`mem-cli delete` removes memory folders, including attachments.
 
 ```bash filename="Terminal"
-mem delete --roots /repo --repo /repo --path /repo/.memories/data/staging-db-weekly-reset/memory.md
+mem-cli delete --roots /repo --repo /repo --path /repo/.memories/data/staging-db-weekly-reset/memory.md
 ```
 
 Stdout is a JSON array of deleted `memory.md` paths, descendants before parents.
@@ -35,7 +35,7 @@ Delete can remove a memory whose custom fields no longer match the current schem
 ### File and folder in one call
 
 ```bash filename="Terminal"
-mem delete --roots /repo --repo /repo \
+mem-cli delete --roots /repo --repo /repo \
   --path /repo/.memories/data/one/memory.md \
   --path /repo/.memories/data/two
 ```
@@ -43,7 +43,7 @@ mem delete --roots /repo --repo /repo \
 ### Nested memories
 
 ```bash filename="Terminal"
-mem delete --roots /repo --repo /repo \
+mem-cli delete --roots /repo --repo /repo \
   --path /repo/.memories/data/parent/nested/memory.md \
   --path /repo/.memories/data/parent/memory.md
 ```

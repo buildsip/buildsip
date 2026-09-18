@@ -10,7 +10,10 @@ export const updateSchema = z.strictObject(
         error:
           "Expected an object containing only frontmatter fields to change: title, scope, doNotEdit, doNotDelete, or configured custom fields. Omit id; the stored ID is preserved. Omit frontmatter entirely to keep it unchanged.",
       })
-      .optional(),
+      .optional()
+      .describe(
+        "Only metadata fields to change: title, scope, protection flags, or configured custom fields. Omitted fields keep their values. Omit id.",
+      ),
   },
   {
     error: (issue) =>

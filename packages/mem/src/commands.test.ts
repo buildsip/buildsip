@@ -20,6 +20,7 @@ import { search } from "./commands/search";
 import { insert } from "./commands/insert";
 import { update } from "./commands/update";
 import { NAMES } from "./names";
+import { cliEnv } from "./test/cli-env";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:fs/promises")>();
@@ -39,6 +40,8 @@ beforeEach(async () => {
   const fs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
   vi.mocked(rename).mockImplementation(fs.rename);
   temp = await realpath(await mkdtemp(join(tmpdir(), "mem-commands-")));
+  // CLI startup installs MCP entries. Use a detected agent in a disposable home.
+  await mkdir(join(temp, "home", ".cursor"), { recursive: true });
   root = join(temp, "project with spaces");
   team = join(temp, "team");
   web = join(root, "apps", "web");
@@ -113,7 +116,12 @@ async function frontmatter(path: string) {
 }
 
 function run({ args, input }: { args: string[]; input?: string }) {
-  return spawnSync(process.execPath, [cli, ...args], { cwd: root, input, encoding: "utf8" });
+  return spawnSync(process.execPath, [cli, ...args], {
+    cwd: root,
+    input,
+    encoding: "utf8",
+    env: cliEnv({ home: join(temp, "home") }),
+  });
 }
 
 describe("insert and update", () => {
@@ -1157,7 +1165,10 @@ describe("built CLI", () => {
       });
       expect(result.status).toBe(1);
       expect(result.stdout).toBe("");
-      expect(JSON.parse(result.stderr).error).toContain('Replace scope "bad/bad/bad"');
+      expect(JSON.parse(result.stderr).error).toContain('Invalid scope: "bad/bad/bad"');
+      expect(JSON.parse(result.stderr).error).toContain(
+        "Use an existing repository-relative file or directory",
+      );
       expect(await readFile(path, "utf8")).toBe(before);
       expect(existsSync(join(root, NAMES.MEMORIES))).toBe(false);
     },
@@ -1580,8 +1591,10 @@ describe("built CLI", () => {
   it("lists only this increment's commands and exits successfully for help", () => {
     const result = run({ args: ["--help"] });
     expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Usage: mem-cli");
     expect(result.stdout).toContain("insert");
     expect(result.stdout).toContain("update");
+    expect(result.stdout).toContain("mcp");
     expect(result.stdout).not.toContain("upsert");
     expect(result.stdout).not.toContain("prune");
     expect(result.stdout).not.toContain("upvote");

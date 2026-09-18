@@ -49,10 +49,10 @@ export async function init({
   const { config, local, source } =
     project === root ? repoConfig : await readConfig({ project, repo: root });
 
-  intro("mem init");
+  intro("mem-cli init");
   if (project !== nearest) {
     log.info(
-      `First-time setup: initializing the repository at ${root}. Run mem init again from this package to configure it.`,
+      `First-time setup: initializing the repository at ${root}. Run mem-cli init again from this package to configure it.`,
     );
   }
   if (source !== undefined) {
@@ -60,7 +60,7 @@ export async function init({
       message: `${name} is already initialized. Reconfigure its settings?`,
       initialValue: false,
     });
-    if (isCancel(update)) throw new Error("mem init cancelled.");
+    if (isCancel(update)) throw new Error("mem-cli init cancelled.");
     if (!update) {
       outro(`${name} unchanged.`);
       return;
@@ -84,7 +84,7 @@ export async function init({
     },
     {
       onCancel: () => {
-        throw new Error("mem init cancelled.");
+        throw new Error("mem-cli init cancelled.");
       },
     },
   );

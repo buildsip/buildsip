@@ -1,13 +1,13 @@
-# mem insert
+# mem-cli insert
 
-`mem insert` creates one memory from a JSON object. Search for a related memory before inserting.
+`mem-cli insert` creates one memory from a JSON object. Search for a related memory before inserting.
 
 ```bash filename="Terminal"
-mem insert --roots /repo --repo /repo --input memory.json
+mem-cli insert --roots /repo --repo /repo --input memory.json
 ```
 
 ```bash filename="Terminal"
-mem insert --roots /repo --repo /repo <<'EOF'
+mem-cli insert --roots /repo --repo /repo <<'EOF'
 {
   "body": "Retry the client once after a reconnect; do not stack interceptors.",
   "frontmatter": {

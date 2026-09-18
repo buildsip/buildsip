@@ -14,7 +14,7 @@ Must be one JSON object with double-quoted keys. Comments and trailing commas ar
 
 ## Inheritance
 
-mem merges config from the Git root down to the owning repo or package directory. Closer files override parent values. Nested objects are merged field by field; `false` replaces a parent object.
+mem-cli merges config from the Git root down to the owning repo or package directory. Closer files override parent values. Nested objects are merged field by field; `false` replaces a parent object.
 
 [`availableToWorkspace`](../config/availableToWorkspace.md) and [`frontmatter.custom`](../config/frontmatter.md) may appear only in the Git root file.
 
@@ -23,4 +23,4 @@ A missing file is treated as `{}`.
 ## Related
 
 - [Configuration](../config/index.md)
-- [`mem init`](../cli/init.md)
+- [`mem-cli init`](../cli/init.md)

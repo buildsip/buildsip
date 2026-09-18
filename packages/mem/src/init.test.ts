@@ -38,7 +38,7 @@ vi.mock("@clack/prompts", async (importOriginal) => {
   };
 });
 
-describe("mem init", () => {
+describe("mem-cli init", () => {
   let temp: string;
   let root: string;
   let web: string;
@@ -103,7 +103,7 @@ describe("mem init", () => {
         name: "mem",
         version: "0.1.0",
         private: true,
-        bin: { mem: "dist/index.js" },
+        bin: { "mem-cli": "dist/index.js" },
       }),
     );
     writeFileSync(join(root, NAMES.PACKAGE_JSON), '{"name":"@acme/monorepo"}');
@@ -126,7 +126,7 @@ describe("mem init", () => {
     mkdirSync(join(globalRoot, "mem"), { recursive: true });
     writeFileSync(
       join(globalRoot, "mem", NAMES.PACKAGE_JSON),
-      JSON.stringify({ name: "mem", version, bin: { mem: "dist/index.js" } }),
+      JSON.stringify({ name: "mem", version, bin: { "mem-cli": "dist/index.js" } }),
     );
   }
 
@@ -134,7 +134,7 @@ describe("mem init", () => {
     vi.stubEnv("npm_config_user_agent", "npm/11.0.0 node/v22.0.0");
     writeFileSync(
       join(cliRoot, NAMES.PACKAGE_JSON),
-      JSON.stringify({ name: "mem", version: "0.1.0", bin: { mem: "dist/index.js" } }),
+      JSON.stringify({ name: "mem", version: "0.1.0", bin: { "mem-cli": "dist/index.js" } }),
     );
   }
 
@@ -176,7 +176,7 @@ describe("mem init", () => {
     expect(existsSync(join(web, "src", NAMES.MEMORIES))).toBe(false);
     expect(confirm).toHaveBeenCalledTimes(3);
     expect(log.info).toHaveBeenCalledWith(
-      `First-time setup: initializing the repository at ${root}. Run mem init again from this package to configure it.`,
+      `First-time setup: initializing the repository at ${root}. Run mem-cli init again from this package to configure it.`,
     );
     expect(execFileSync).toHaveBeenCalledWith(
       "pnpm",

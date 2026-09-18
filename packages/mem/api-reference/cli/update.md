@@ -1,9 +1,9 @@
-# mem update
+# mem-cli update
 
-`mem update` patches one existing memory. Only supplied fields change.
+`mem-cli update` patches one existing memory. Only supplied fields change.
 
 ```bash filename="Terminal"
-mem update --roots /repo --repo /repo --path /repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect/memory.md --input update.json
+mem-cli update --roots /repo --repo /repo --path /repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect/memory.md --input update.json
 ```
 
 ```json
@@ -66,7 +66,7 @@ Writes validate custom fields against the repository root schema before publicat
 ### Directory path
 
 ```bash filename="Terminal"
-mem update --roots /repo --repo /repo --path /repo/.memories/data/wrong-folder <<'EOF'
+mem-cli update --roots /repo --repo /repo --path /repo/.memories/data/wrong-folder <<'EOF'
 {}
 EOF
 ```

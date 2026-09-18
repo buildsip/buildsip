@@ -10,20 +10,31 @@ export const insertSchema = z.strictObject(
   {
     body: z
       .string({ error: "Expected a nonempty string containing the Markdown body." })
-      .regex(/\S/, "Expected a nonempty string containing the Markdown body."),
-    frontmatter: z.looseObject(
-      {
-        ...frontmatterSchema.shape,
-        id: z
-          .never({ error: "Omit id. Insert generates it; update preserves the stored ID." })
-          .optional(),
-        scope: z.array(scopeSchema, { error: scopeMessage }).min(1, scopeMessage),
-      },
-      {
-        error:
-          'Expected an object with title (a nonempty string) and scope (a nonempty array, such as ["apps/web/auth"] or ["*"]). Optional fields: doNotEdit, doNotDelete, and configured custom fields. Omit id; it is generated automatically.',
-      },
-    ),
+      .regex(/\S/, "Expected a nonempty string containing the Markdown body.")
+      .describe("Nonempty Markdown content for the memory."),
+    frontmatter: z
+      .looseObject(
+        {
+          ...frontmatterSchema.shape,
+          id: z
+            .never({ error: "Omit id. Insert generates it; update preserves the stored ID." })
+            .optional()
+            .describe("Omit this field. Insert generates the ID; update preserves it."),
+          scope: z
+            .array(scopeSchema, { error: scopeMessage })
+            .min(1, scopeMessage)
+            .describe(
+              'Existing repository-relative file or directory paths. Use the narrowest scope that covers the memory; ["*"] means the whole repo.',
+            ),
+        },
+        {
+          error:
+            'Expected an object with title (a nonempty string) and scope (a nonempty array, such as ["apps/web/auth"] or ["*"]). Optional fields: doNotEdit, doNotDelete, and configured custom fields. Omit id; it is generated automatically.',
+        },
+      )
+      .describe(
+        "Memory metadata: required title and scope, optional protection flags and custom fields allowed by the destination store's config. Omit id.",
+      ),
   },
   {
     error: (issue) =>

@@ -9,7 +9,8 @@ export const frontmatterSchema = z.looseObject(
       .regex(/\S/, "Expected a nonempty string identifying the memory."),
     title: z
       .string({ error: "Expected a nonempty string for the memory title." })
-      .regex(/\S/, "Expected a nonempty string for the memory title."),
+      .regex(/\S/, "Expected a nonempty string for the memory title.")
+      .describe("Nonempty memory title. The memory directory is named from this title."),
     scope: z
       .union([
         scopeSchema,
@@ -20,10 +21,16 @@ export const frontmatterSchema = z.looseObject(
       .optional(),
     doNotEdit: z
       .boolean({ error: "Expected a boolean: true or false; omit to keep the current value." })
-      .optional(),
+      .optional()
+      .describe(
+        "When true, agents cannot edit this memory. Omit to keep the current value on update.",
+      ),
     doNotDelete: z
       .boolean({ error: "Expected a boolean: true or false; omit to keep the current value." })
-      .optional(),
+      .optional()
+      .describe(
+        "When true, agents cannot delete this memory. Omit to keep the current value on update.",
+      ),
   },
   {
     error:
