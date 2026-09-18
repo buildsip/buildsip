@@ -1,10 +1,10 @@
 /**
  * The user can install the CLI using different package managers:
  *
- * npx mem init
- * pnpm dlx mem init
- * yarn dlx mem init
- * bunx --bun mem init
+ * npx mem-cli init
+ * pnpm dlx mem-cli init
+ * yarn dlx mem-cli init
+ * bunx --bun mem-cli init
  */
 export function getPackageManager() {
   // Launchers identify themselves; bunx --bun also identifies itself through the runtime.

@@ -1,9 +1,9 @@
-# mem update
+# mem-cli update
 
-`mem update` patches one existing memory. Only supplied fields change.
+`mem-cli update` patches one existing memory. Only supplied fields change.
 
 ```bash filename="Terminal"
-mem update --roots /repo --repo /repo --path /repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect/memory.md --input update.json
+mem-cli update --roots /repo --repo /repo --path /repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect --input update.json
 ```
 
 ```json
@@ -12,7 +12,7 @@ mem update --roots /repo --repo /repo --path /repo/apps/web/.memories/data/axios
 }
 ```
 
-Stdout is a one-element JSON array of the resulting absolute `memory.md` path. An update can rename or move the folder, so use the returned path for later calls.
+Stdout is a one-element JSON array of the resulting absolute memory directory path. An update can rename or move the folder, so use the returned path for later calls.
 
 A missing path is an error. Update never creates a memory.
 
@@ -22,10 +22,10 @@ A missing path is an error. Update never creates a memory.
 | --- | --- |
 | [`--roots <path...>`](./index.md#--roots) | Workspace directories. Required. |
 | [`--repo <path>`](./index.md#--repo) | Git root. Required. |
-| `--path <path>` | Existing `memory.md` file or its directory. Required. |
+| `--path <path>` | Existing memory directory containing `memory.md`. Required. |
 | [`--input <file>`](./index.md#--input) | JSON file, or `-` for stdin. |
 
-`--path` resolves relative paths from the CLI working directory. The file must live in a `.memories/data` store of `--repo`.
+`--path` resolves relative paths from the CLI working directory. The memory directory must live in a `.memories/data` store of `--repo`.
 
 ### Input
 
@@ -63,10 +63,10 @@ Writes validate custom fields against the repository root schema before publicat
 }
 ```
 
-### Directory path
+### Repair the title folder
 
 ```bash filename="Terminal"
-mem update --roots /repo --repo /repo --path /repo/.memories/data/wrong-folder <<'EOF'
+mem-cli update --roots /repo --repo /repo --path /repo/.memories/data/wrong-folder <<'EOF'
 {}
 EOF
 ```

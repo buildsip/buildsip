@@ -8,7 +8,7 @@ Supported config version. Optional. If present, must be the number `1`.
 }
 ```
 
-[`mem init`](../cli/init.md) always writes `1`. Other values fail config validation.
+[`mem-cli init`](../cli/init.md) always writes `1`. Other values fail config validation.
 
 ## Related
 

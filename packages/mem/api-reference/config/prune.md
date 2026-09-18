@@ -28,11 +28,11 @@ All three fields are optional. Unknown keys are rejected. `true` is not valid.
 
 A package may omit `prune` to inherit its parent. `false` disables an inherited object. Supplying `{ "ttl": "150d" }` overrides only `ttl` and keeps other inherited durations.
 
-[`mem init`](../cli/init.md) writes `false`, or the object above (keeping any existing durations on the target).
+[`mem-cli init`](../cli/init.md) writes `false`, or the object above (keeping any existing durations on the target).
 
 The CLI does not run pruning.
 
 ## Related
 
-- [`mem init`](../cli/init.md)
+- [`mem-cli init`](../cli/init.md)
 - [`config.json`](../file-conventions/config-json.md)

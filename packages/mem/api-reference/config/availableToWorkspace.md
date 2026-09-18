@@ -14,9 +14,9 @@ Omitted or `false` keeps the memories local to that repo.
 
 Only the root value is used. Package configs cannot override it.
 
-[`mem init`](../cli/init.md) asks this only when configuring the Git root.
+[`mem-cli init`](../cli/init.md) asks this only when configuring the Git root.
 
 ## Related
 
 - [`search`](../cli/search.md)
-- [`mem init`](../cli/init.md)
+- [`mem-cli init`](../cli/init.md)

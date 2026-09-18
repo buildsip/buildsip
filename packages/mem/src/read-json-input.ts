@@ -14,7 +14,7 @@ export async function readJsonInput({
   if (file && file !== "-") {
     text = await readFile(file, "utf8");
   } else {
-    // isTTY means a person is typing in a terminal, rather than piping JSON into mem.
+    // isTTY means a person is typing in a terminal, rather than piping JSON into mem-cli.
     if (process.stdin.isTTY)
       throw new Error("Provide --input <file> or pipe one memory JSON object into stdin.");
     process.stdin.setEncoding("utf8");

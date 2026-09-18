@@ -20,6 +20,7 @@ import { search } from "./commands/search";
 import { insert } from "./commands/insert";
 import { update } from "./commands/update";
 import { NAMES } from "./names";
+import { cliEnv } from "./test/cli-env";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:fs/promises")>();
@@ -39,6 +40,8 @@ beforeEach(async () => {
   const fs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
   vi.mocked(rename).mockImplementation(fs.rename);
   temp = await realpath(await mkdtemp(join(tmpdir(), "mem-commands-")));
+  // CLI startup installs MCP entries. Use a detected agent in a disposable home.
+  await mkdir(join(temp, "home", ".cursor"), { recursive: true });
   root = join(temp, "project with spaces");
   team = join(temp, "team");
   web = join(root, "apps", "web");
@@ -108,12 +111,17 @@ async function edit({
 }
 
 async function frontmatter(path: string) {
-  const source = await readFile(path, "utf8");
+  const source = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
   return parse(source.split("---")[1]!);
 }
 
 function run({ args, input }: { args: string[]; input?: string }) {
-  return spawnSync(process.execPath, [cli, ...args], { cwd: root, input, encoding: "utf8" });
+  return spawnSync(process.execPath, [cli, ...args], {
+    cwd: root,
+    input,
+    encoding: "utf8",
+    env: cliEnv({ home: join(temp, "home") }),
+  });
 }
 
 describe("insert and update", () => {
@@ -121,7 +129,7 @@ describe("insert and update", () => {
     const old = await memory({ title: "Legacy memory" });
     const id = (await frontmatter(old)).id;
     const path = await edit({ path: old, title: "Legacy memory", scope: ["apps/web"] });
-    expect(path).toBe(join(web, NAMES.MEMORIES, NAMES.DATA, "legacy-memory", NAMES.MEMORY_MD));
+    expect(path).toBe(join(web, NAMES.MEMORIES, NAMES.DATA, "legacy-memory"));
     expect(existsSync(old)).toBe(false);
     expect(await frontmatter(path)).toMatchObject({ id });
     expect(await frontmatter(path)).not.toHaveProperty("scope");
@@ -140,20 +148,20 @@ describe("insert and update", () => {
       "custom frontmatter",
     );
     expect(await memory({ title: "Valid URL", link: "https://example.com" })).toContain(
-      NAMES.MEMORY_MD,
+      "valid-url",
     );
   });
 
   it("rolls back a title rename if replacing the body fails", async () => {
     const path = await memory({ title: "Before" });
-    const before = await readFile(path, "utf8");
+    const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
     const fs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
     vi.mocked(rename).mockImplementation(async (from, to) => {
       if (String(from).endsWith(NAMES.MEMORY_MD)) throw new Error("disk full");
       return fs.rename(from, to);
     });
     await expect(edit({ path, title: "After", body: "changed" })).rejects.toThrow("disk full");
-    expect(await readFile(path, "utf8")).toBe(before);
+    expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
     expect(existsSync(join(root, NAMES.MEMORIES, NAMES.DATA, "after"))).toBe(false);
   });
   it("creates a title-named memory with a stable UUID in a package on demand", async () => {
@@ -162,7 +170,7 @@ describe("insert and update", () => {
       title: "Déjà vu: cache",
       body: "Do not parse --- in Markdown.\n",
     });
-    expect(path).toBe(join(web, NAMES.MEMORIES, NAMES.DATA, "deja-vu-cache", NAMES.MEMORY_MD));
+    expect(path).toBe(join(web, NAMES.MEMORIES, NAMES.DATA, "deja-vu-cache"));
     expect((await frontmatter(path)).id).toMatch(/^[0-9a-f-]{36}$/);
     expect(existsSync(join(root, NAMES.MEMORIES))).toBe(false);
     expect((await search({ roots, repo: root, query: "parse" }))[0]?.body).toBe(
@@ -173,7 +181,7 @@ describe("insert and update", () => {
   it("updates by path, renames the folder, and preserves attachments and omitted metadata", async () => {
     const old = await memory({ title: "Old title", scope: ["apps/web/auth"], doNotDelete: true });
     const id = (await frontmatter(old)).id;
-    await writeFile(join(dirname(old), "evidence.json"), '{"keep":true}');
+    await writeFile(join(old, "evidence.json"), '{"keep":true}');
     const path = await edit({
       path: old,
       title: "New title",
@@ -181,7 +189,7 @@ describe("insert and update", () => {
       scope: ["apps/web/auth"],
     });
     expect(existsSync(old)).toBe(false);
-    expect(await readFile(join(dirname(path), "evidence.json"), "utf8")).toBe('{"keep":true}');
+    expect(await readFile(join(path, "evidence.json"), "utf8")).toBe('{"keep":true}');
     expect(await frontmatter(path)).toMatchObject({
       id,
       title: "New title",
@@ -194,62 +202,58 @@ describe("insert and update", () => {
     const first = await memory({ title: "Cache warning" });
     await mkdir(join(root, NAMES.MEMORIES, NAMES.DATA, "errors"));
     const tagged = join(root, NAMES.MEMORIES, NAMES.DATA, "errors", "cache-warning");
-    await rename(dirname(first), tagged);
+    await rename(first, tagged);
     const path = await edit({
-      path: join(tagged, NAMES.MEMORY_MD),
+      path: tagged,
       title: "Updated cache warning",
     });
-    expect(path).toBe(
-      join(root, NAMES.MEMORIES, NAMES.DATA, "errors", "updated-cache-warning", NAMES.MEMORY_MD),
-    );
+    expect(path).toBe(join(root, NAMES.MEMORIES, NAMES.DATA, "errors", "updated-cache-warning"));
     expect(await search({ roots, repo: root, query: "errors" })).toHaveLength(1);
   });
 
   it("rejects title collisions without overwriting either memory", async () => {
     const one = await memory({ title: "One" });
     const two = await memory({ title: "Two" });
-    const before = await readFile(one, "utf8");
+    const before = await readFile(join(one, NAMES.MEMORY_MD), "utf8");
     await expect(edit({ path: two, title: "One" })).rejects.toThrow("already exists");
     await expect(memory({ title: "One" })).rejects.toThrow("already exists");
-    expect(await readFile(one, "utf8")).toBe(before);
+    expect(await readFile(join(one, NAMES.MEMORY_MD), "utf8")).toBe(before);
     expect(existsSync(two)).toBe(true);
   });
 
   it("rejects edits to a protected memory even when the call tries to clear protection", async () => {
     const path = await memory({ title: "Protected", doNotEdit: true });
-    const before = await readFile(path, "utf8");
+    const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
     await expect(edit({ path, title: "Changed", doNotEdit: false })).rejects.toThrow(
       `You cannot edit this memory because doNotEdit is true: ${path}. Ask the user to edit it.`,
     );
-    expect(await readFile(path, "utf8")).toBe(before);
+    expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
   });
 
   it("moves between packages and preserves attachment folders and directory tags", async () => {
     const first = await memory({ project: api, title: "Cache rule", doNotDelete: true });
     const tags = join(api, NAMES.MEMORIES, NAMES.DATA, "errors", "network");
     await mkdir(tags, { recursive: true });
-    const old = join(tags, "cache-rule", NAMES.MEMORY_MD);
-    await rename(dirname(first), dirname(old));
-    await mkdir(join(dirname(old), "attachments"));
-    await writeFile(join(dirname(old), "attachments", "trace.txt"), "trace");
+    const old = join(tags, "cache-rule");
+    await rename(first, old);
+    await mkdir(join(old, "attachments"));
+    await writeFile(join(old, "attachments", "trace.txt"), "trace");
     const id = (await frontmatter(old)).id;
     const path = await edit({ path: old, title: "Updated rule", scope: ["apps/web/auth"] });
-    expect(path).toBe(
-      join(web, NAMES.MEMORIES, NAMES.DATA, "errors", "network", "updated-rule", NAMES.MEMORY_MD),
-    );
+    expect(path).toBe(join(web, NAMES.MEMORIES, NAMES.DATA, "errors", "network", "updated-rule"));
     expect(await frontmatter(path)).toMatchObject({
       id,
       scope: ["apps/web/auth"],
       doNotDelete: true,
     });
-    expect(await readFile(join(dirname(path), "attachments", "trace.txt"), "utf8")).toBe("trace");
+    expect(await readFile(join(path, "attachments", "trace.txt"), "utf8")).toBe("trace");
     expect(existsSync(old)).toBe(false);
   });
 
   it("rolls back a store move if publishing the new body fails", async () => {
     const old = await memory({ project: web, title: "Before" });
-    const before = await readFile(old, "utf8");
-    await writeFile(join(dirname(old), "trace.txt"), "keep");
+    const before = await readFile(join(old, NAMES.MEMORY_MD), "utf8");
+    await writeFile(join(old, "trace.txt"), "keep");
     const fs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
     vi.mocked(rename).mockImplementation(async (from, to) => {
       if (String(from).endsWith(NAMES.MEMORY_MD)) throw new Error("disk full");
@@ -258,14 +262,14 @@ describe("insert and update", () => {
     await expect(edit({ path: old, title: "After", scope: ["apps/api"] })).rejects.toThrow(
       "disk full",
     );
-    expect(await readFile(old, "utf8")).toBe(before);
-    expect(await readFile(join(dirname(old), "trace.txt"), "utf8")).toBe("keep");
+    expect(await readFile(join(old, NAMES.MEMORY_MD), "utf8")).toBe(before);
+    expect(await readFile(join(old, "trace.txt"), "utf8")).toBe("keep");
     expect(existsSync(join(api, NAMES.MEMORIES, NAMES.DATA, "after"))).toBe(false);
   });
 
   it("places sibling package scopes at their common repo root", async () => {
     const path = await memory({ title: "Shared cache", scope: ["apps/web", "apps/api"] });
-    expect(path).toBe(join(root, NAMES.MEMORIES, NAMES.DATA, "shared-cache", NAMES.MEMORY_MD));
+    expect(path).toBe(join(root, NAMES.MEMORIES, NAMES.DATA, "shared-cache"));
     expect((await frontmatter(path)).scope).toEqual(["apps/web", "apps/api"]);
     for (const scope of ["apps/web", "apps/api"])
       expect(
@@ -280,7 +284,7 @@ describe("insert and update", () => {
     await writeFile(join(web, "src", "constants.ts"), "");
     const scopes = ["apps/web/src/commands", "apps/web/src/constants.ts"];
     const path = await memory({ title: "CLI internals", scope: scopes });
-    expect(path).toBe(join(web, NAMES.MEMORIES, NAMES.DATA, "cli-internals", NAMES.MEMORY_MD));
+    expect(path).toBe(join(web, NAMES.MEMORIES, NAMES.DATA, "cli-internals"));
     expect((await frontmatter(path)).scope).toEqual(scopes);
     expect(existsSync(join(root, NAMES.MEMORIES))).toBe(false);
     expect(existsSync(join(web, "src", NAMES.MEMORIES))).toBe(false);
@@ -331,12 +335,12 @@ describe("insert and update", () => {
   it("widens a package memory to the repo when scope becomes *", async () => {
     const old = await memory({ title: "Cache", scope: ["apps/web/auth"] });
     const id = (await frontmatter(old)).id;
-    await writeFile(join(dirname(old), "evidence.txt"), "keep");
+    await writeFile(join(old, "evidence.txt"), "keep");
     const path = await edit({ path: old, title: "Cache", scope: ["*"] });
-    expect(path).toBe(join(root, NAMES.MEMORIES, NAMES.DATA, "cache", NAMES.MEMORY_MD));
+    expect(path).toBe(join(root, NAMES.MEMORIES, NAMES.DATA, "cache"));
     expect(await frontmatter(path)).toMatchObject({ id });
     expect(await frontmatter(path)).not.toHaveProperty("scope");
-    expect(await readFile(join(dirname(path), "evidence.txt"), "utf8")).toBe("keep");
+    expect(await readFile(join(path, "evidence.txt"), "utf8")).toBe("keep");
     expect(existsSync(old)).toBe(false);
     expect(await search({ roots, repo: root, query: "Cache", scope: ["apps/api"] })).toHaveLength(
       1,
@@ -352,18 +356,18 @@ describe("insert and update", () => {
 
   it("rejects root schema mismatches and destination collisions without touching the original", async () => {
     const old = await memory({ project: web, title: "Keep" });
-    const before = await readFile(old, "utf8");
+    const before = await readFile(join(old, NAMES.MEMORY_MD), "utf8");
     await config({ project: root, value: { frontmatter: { custom: { required: ["ticket"] } } } });
     await expect(edit({ path: old, title: "Moved", scope: ["apps/api"] })).rejects.toThrow(
       "custom frontmatter",
     );
-    expect(await readFile(old, "utf8")).toBe(before);
+    expect(await readFile(join(old, NAMES.MEMORY_MD), "utf8")).toBe(before);
     await config({ project: root, value: {} });
     const collision = await memory({ project: api, title: "Keep" });
     await expect(edit({ path: old, title: "Keep", scope: ["apps/api"] })).rejects.toThrow(
       "already exists",
     );
-    expect(await readFile(old, "utf8")).toBe(before);
+    expect(await readFile(join(old, NAMES.MEMORY_MD), "utf8")).toBe(before);
     expect(existsSync(collision)).toBe(true);
   });
 
@@ -402,13 +406,13 @@ describe("insert and update", () => {
       expect(existsSync(join(project, NAMES.MEMORIES))).toBe(false);
     }
     const path = await memory({ project: api, title: "Keep" });
-    const before = await readFile(path, "utf8");
-    await writeFile(join(dirname(path), "trace.txt"), "keep attachment");
+    const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
+    await writeFile(join(path, "trace.txt"), "keep attachment");
     await expect(edit({ path, title: "Changed", body: "changed", scope })).rejects.toThrow(
       "existing repository-relative file or directory",
     );
-    expect(await readFile(path, "utf8")).toBe(before);
-    expect(await readFile(join(dirname(path), "trace.txt"), "utf8")).toBe("keep attachment");
+    expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
+    expect(await readFile(join(path, "trace.txt"), "utf8")).toBe("keep attachment");
     expect(existsSync(join(root, NAMES.MEMORIES))).toBe(false);
     expect(existsSync(join(web, NAMES.MEMORIES))).toBe(false);
     await expect(search({ roots, repo: root, query: "Keep", scope })).rejects.toThrow(
@@ -418,7 +422,7 @@ describe("insert and update", () => {
 
   it("rejects existing scopes outside the repo, symlinks, and nested repos on update and search", async () => {
     const path = await memory({ title: "Keep" });
-    const before = await readFile(path, "utf8");
+    const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
     await symlink(team, join(root, "outside"), "dir");
     await symlink(web, join(root, "alias"), "dir");
     execFileSync("git", ["init", "--quiet", api]);
@@ -426,7 +430,7 @@ describe("insert and update", () => {
       await expect(memory({ title: "Bad", scope: [scope] })).rejects.toThrow();
       await expect(edit({ path, scope: [scope] })).rejects.toThrow();
       await expect(search({ roots, repo: root, query: "Keep", scope: [scope] })).rejects.toThrow();
-      expect(await readFile(path, "utf8")).toBe(before);
+      expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
     }
   });
 
@@ -447,11 +451,11 @@ describe("insert and update", () => {
     const path = await memory({ title: "First" });
     const second = join(root, NAMES.MEMORIES, NAMES.DATA, "second", NAMES.MEMORY_MD);
     await mkdir(dirname(second));
-    await writeFile(second, await readFile(path));
+    await writeFile(second, await readFile(join(path, NAMES.MEMORY_MD)));
     const before = await readFile(second, "utf8");
     await edit({ path, body: "changed first" });
     expect(await readFile(second, "utf8")).toBe(before);
-    expect(await readFile(path, "utf8")).toContain("changed first");
+    expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toContain("changed first");
   });
 
   it("uses one root schema for inserts and moves across package and repo stores", async () => {
@@ -495,12 +499,12 @@ describe("insert and update", () => {
     for (const project of [api, root]) {
       const previous = path;
       path = await edit({ path, scope: [relative(root, project) || "*"] });
-      expect(path).toBe(join(project, NAMES.MEMORIES, NAMES.DATA, "valid-rule", NAMES.MEMORY_MD));
+      expect(path).toBe(join(project, NAMES.MEMORIES, NAMES.DATA, "valid-rule"));
       expect(existsSync(previous)).toBe(false);
       expect(await frontmatter(path)).toMatchObject({ id, ticket: "ABC", anchors: ["cache"] });
-      const before = await readFile(path, "utf8");
+      const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
       await expect(edit({ path, ticket: "AB" })).rejects.toThrow("custom frontmatter");
-      expect(await readFile(path, "utf8")).toBe(before);
+      expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
     }
     expect(await search({ roots, repo: root, query: "ABC" })).toHaveLength(1);
   });
@@ -569,6 +573,16 @@ describe("insert and update", () => {
 });
 
 describe("partial updates", () => {
+  it("rejects a memory file path without changing its contents", async () => {
+    const path = await memory({ title: "Keep" });
+    const file = join(path, NAMES.MEMORY_MD);
+    const before = await readFile(file, "utf8");
+    await expect(update({ roots, repo: root, path: file, body: "Changed" })).rejects.toThrow(
+      "existing memory directory",
+    );
+    expect(await readFile(file, "utf8")).toBe(before);
+  });
+
   it.each(["", " ", "memory\0.md"])("rejects invalid target paths: %j", async (path) => {
     await expect(update({ roots, repo: root, path })).rejects.toThrow("Provide --path");
   });
@@ -578,12 +592,12 @@ describe("partial updates", () => {
       const original = await memory({ project: web, title: "Déjà vu: cache", doNotDelete: true });
       const header = await frontmatter(original);
       const body = "  indented code\n\nkeep trailing spaces  \n\n";
-      await writeFile(original, `---\n${stringify(header)}---\n\n${body}`);
+      await writeFile(join(original, NAMES.MEMORY_MD), `---\n${stringify(header)}---\n\n${body}`);
       const tags = join(web, NAMES.MEMORIES, NAMES.DATA, "errors");
       await mkdir(tags);
-      const wrong = join(tags, "wrong-folder", NAMES.MEMORY_MD);
-      await rename(dirname(original), dirname(wrong));
-      await writeFile(join(dirname(wrong), "trace.txt"), "keep attachment");
+      const wrong = join(tags, "wrong-folder");
+      await rename(original, wrong);
+      await writeFile(join(wrong, "trace.txt"), "keep attachment");
       const patch =
         change === "body"
           ? { body: "new content" }
@@ -591,12 +605,12 @@ describe("partial updates", () => {
             ? { frontmatter: { title: header.title } }
             : {};
       const [saved] = await update({ roots, repo: root, path: wrong, ...patch });
-      expect(saved).toBe(join(tags, "deja-vu-cache", NAMES.MEMORY_MD));
+      expect(saved).toBe(join(tags, "deja-vu-cache"));
       expect(await frontmatter(saved!)).toEqual(header);
       expect((await search({ roots, repo: root, query: "cache" }))[0]?.body).toBe(
         change === "body" ? "new content\n" : body,
       );
-      expect(await readFile(join(dirname(saved!), "trace.txt"), "utf8")).toBe("keep attachment");
+      expect(await readFile(join(saved!, "trace.txt"), "utf8")).toBe("keep attachment");
       expect(existsSync(wrong)).toBe(false);
       await expect(update({ roots, repo: root, path: wrong })).rejects.toThrow("Search again");
     },
@@ -605,9 +619,9 @@ describe("partial updates", () => {
   it("preserves explicit scope and current store when scope is omitted", async () => {
     const first = await memory({ title: "Scope", scope: ["apps/web/auth"] });
     // A manually relocated memory must not move stores again on a content-only update.
-    const path = join(root, NAMES.MEMORIES, NAMES.DATA, "scope", NAMES.MEMORY_MD);
-    await mkdir(dirname(dirname(path)), { recursive: true });
-    await rename(dirname(first), dirname(path));
+    const path = join(root, NAMES.MEMORIES, NAMES.DATA, "scope");
+    await mkdir(dirname(path), { recursive: true });
+    await rename(first, path);
     const before = await frontmatter(path);
     expect(await update({ roots, repo: root, path, body: "new body" })).toEqual([path]);
     expect(await frontmatter(path)).toEqual(before);
@@ -641,11 +655,11 @@ describe("partial updates", () => {
       anchors: ["a", "b"],
       doNotDelete: false,
     });
-    const before = await readFile(path, "utf8");
+    const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
     await expect(
       update({ roots, repo: root, path, frontmatter: { anchors: [42] } }),
     ).rejects.toThrow("frontmatter.anchors[0]");
-    expect(await readFile(path, "utf8")).toBe(before);
+    expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
   });
 
   it("accepts a folder path for a title-only update and keeps the body", async () => {
@@ -654,30 +668,30 @@ describe("partial updates", () => {
     const [saved] = await update({
       roots,
       repo: root,
-      path: dirname(path),
+      path: path,
       frontmatter: { title: "New" },
     });
-    expect(saved).toBe(join(root, NAMES.MEMORIES, NAMES.DATA, "new", NAMES.MEMORY_MD));
+    expect(saved).toBe(join(root, NAMES.MEMORIES, NAMES.DATA, "new"));
     expect(await frontmatter(saved!)).toMatchObject({ id, title: "New" });
     expect((await search({ roots, repo: root, query: "New" }))[0]?.body).toBe("preserve body\n");
   });
 
   it("does not overwrite another folder during self-healing", async () => {
     const path = await memory({ title: "Original" });
-    const wrong = join(dirname(dirname(path)), "wrong", NAMES.MEMORY_MD);
-    await rename(dirname(path), dirname(wrong));
+    const wrong = join(dirname(path), "wrong");
+    await rename(path, wrong);
     await memory({ title: "Original", body: "another memory" });
-    const before = await readFile(wrong, "utf8");
-    const other = await readFile(path, "utf8");
+    const before = await readFile(join(wrong, NAMES.MEMORY_MD), "utf8");
+    const other = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
     await expect(update({ roots, repo: root, path: wrong })).rejects.toThrow("already exists");
-    expect(await readFile(wrong, "utf8")).toBe(before);
-    expect(await readFile(path, "utf8")).toBe(other);
+    expect(await readFile(join(wrong, NAMES.MEMORY_MD), "utf8")).toBe(before);
+    expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(other);
   });
 
   it("repairs a case-only folder mismatch on case-sensitive and case-insensitive disks", async () => {
     const path = await memory({ title: "Cache" });
-    const wrong = join(dirname(dirname(path)), "CACHE", NAMES.MEMORY_MD);
-    await rename(dirname(path), dirname(wrong));
+    const wrong = join(dirname(path), "CACHE");
+    await rename(path, wrong);
     expect(await update({ roots, repo: root, path: wrong })).toEqual([path]);
     expect(await realpath(path)).toBe(path);
   });
@@ -687,40 +701,38 @@ describe("partial updates", () => {
     await expect(update({ roots, repo: root, path: protectedPath })).rejects.toThrow("doNotEdit");
     const parent = await memory({ title: "Parent" });
     const child = await memory({ title: "Child" });
-    await rename(dirname(child), join(dirname(parent), "child"));
+    await rename(child, join(parent, "child"));
     await expect(update({ roots, repo: root, path: parent })).rejects.toThrow("nested memories");
-    expect(existsSync(join(dirname(parent), "child", NAMES.MEMORY_MD))).toBe(true);
+    expect(existsSync(join(parent, "child", NAMES.MEMORY_MD))).toBe(true);
   });
 
   it("rejects missing, foreign, non-memory, nested-repo, and symlink paths", async () => {
-    const missing = join(root, NAMES.MEMORIES, NAMES.DATA, "missing", NAMES.MEMORY_MD);
+    const missing = join(root, NAMES.MEMORIES, NAMES.DATA, "missing");
     await expect(update({ roots, repo: root, path: missing })).rejects.toThrow("No memory exists");
-    expect(existsSync(dirname(missing))).toBe(false);
+    expect(existsSync(missing)).toBe(false);
     const foreign = await memory({ project: team, title: "Foreign" });
     await expect(update({ roots, repo: root, path: foreign })).rejects.toThrow();
     const path = await memory({ project: web, title: "Local" });
-    const source = await readFile(path, "utf8");
+    const source = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
     const stray = join(root, NAMES.MEMORY_MD);
     await writeFile(stray, source);
-    await expect(update({ roots, repo: root, path: stray })).rejects.toThrow(
-      "Choose a memory path",
-    );
+    await expect(update({ roots, repo: root, path: root })).rejects.toThrow("Choose a memory path");
     await expect(
       update({ roots, repo: root, path: join(web, NAMES.PACKAGE_JSON) }),
-    ).rejects.toThrow("existing memory.md");
+    ).rejects.toThrow("existing memory directory");
     const link = join(root, "link");
-    await symlink(dirname(path), link, "dir");
+    await symlink(path, link, "dir");
     await expect(update({ roots, repo: root, path: link })).rejects.toThrow("Symbolic links");
     execFileSync("git", ["init", "--quiet", web]);
     await expect(update({ roots, repo: root, path })).rejects.toThrow("different Git repository");
-    expect(await readFile(path, "utf8")).toBe(source);
+    expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(source);
   });
 
   it("refuses to rename the data directory itself", async () => {
     const path = await memory({ title: "Loose" });
     const loose = join(root, NAMES.MEMORIES, NAMES.DATA, NAMES.MEMORY_MD);
-    await rename(path, loose);
-    await expect(update({ roots, repo: root, path: loose })).rejects.toThrow(
+    await rename(join(path, NAMES.MEMORY_MD), loose);
+    await expect(update({ roots, repo: root, path: dirname(loose) })).rejects.toThrow(
       "into its own directory",
     );
     expect(existsSync(loose)).toBe(true);
@@ -734,13 +746,17 @@ describe("search", () => {
       paths.push(await memory({ project, title: "Legacy cache" }));
     }
     await config({ project: team, value: { availableToWorkspace: true } });
-    const before = await Promise.all(paths.map((path) => readFile(path, "utf8")));
+    const before = await Promise.all(
+      paths.map((path) => readFile(join(path, NAMES.MEMORY_MD), "utf8")),
+    );
     expect(await search({ roots, repo: root, query: "Legacy" })).toHaveLength(3);
     const custom = { properties: { ticket: { type: "string" } }, required: ["ticket"] };
     await config({ project: root, value: { frontmatter: { custom } } });
     await config({ project: team, value: { availableToWorkspace: true, frontmatter: { custom } } });
     expect(await search({ roots, repo: root, query: "Legacy" })).toHaveLength(3);
-    expect(await Promise.all(paths.map((path) => readFile(path, "utf8")))).toEqual(before);
+    expect(
+      await Promise.all(paths.map((path) => readFile(join(path, NAMES.MEMORY_MD), "utf8"))),
+    ).toEqual(before);
     await expect(memory({ project: web, title: "Missing ticket" })).rejects.toThrow(
       "frontmatter.ticket",
     );
@@ -762,13 +778,13 @@ describe("search", () => {
       value: { frontmatter: { custom: { properties: { ticket: { type: "string" } } } } },
     });
     const path = await memory({ title: "Old ticket", ticket: "legacyticket" });
-    const before = await readFile(path, "utf8");
+    const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
     expect(await search({ roots, repo: root, query: "legacyticket" })).toHaveLength(1);
     await config({ project: root, value });
     const result = await search({ roots, repo: root, query: "legacyticket" });
     expect(result).toHaveLength(1);
     expect(result[0]?.frontmatter.ticket).toBe("legacyticket");
-    expect(await readFile(path, "utf8")).toBe(before);
+    expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
   });
 
   it("keeps memories readable when their stored scope no longer exists", async () => {
@@ -785,7 +801,7 @@ describe("search", () => {
   it("still rejects invalid built-in fields without validating custom fields", async () => {
     const path = await memory({ title: "Cache" });
     await writeFile(
-      path,
+      join(path, NAMES.MEMORY_MD),
       `---\n${stringify({ ...(await frontmatter(path)), doNotEdit: "true" })}---\nbody\n`,
     );
     await expect(search({ roots, repo: root, query: "Cache" })).rejects.toThrow(
@@ -822,7 +838,7 @@ describe("search", () => {
     const global = await memory({ title: "Cache global", scope: ["apps"] });
     await memory({ title: "Cache api-only", scope: ["apps/api"] });
     const sibling = await memory({ project: api, title: "Cache sibling" });
-    await writeFile(sibling, "invalid YAML memory");
+    await writeFile(join(sibling, NAMES.MEMORY_MD), "invalid YAML memory");
     await writeFile(join(web, "auth", "session.ts"), "");
     const result = await search({
       roots,
@@ -846,7 +862,7 @@ describe("search", () => {
     await memory({ title: "Cache unrelated", scope: ["packages/billing"] });
     await writeFile(join(outside, NAMES.PACKAGE_JSON), "{}");
     const bad = await memory({ project: outside, title: "Cache malformed sibling" });
-    await writeFile(bad, "invalid YAML memory");
+    await writeFile(join(bad, NAMES.MEMORY_MD), "invalid YAML memory");
     const result = await search({ roots, repo: root, query: "cache", scope: ["apps"] });
     expect(result.map((entry) => entry.path).sort()).toEqual([parent, child, other, auth].sort());
     const narrow = await search({ roots, repo: root, query: "cache", scope: ["apps/web"] });
@@ -905,7 +921,7 @@ describe("search", () => {
     await writeFile(join(sibling, NAMES.PACKAGE_JSON), "{}");
     const keep = await memory({ project: web, title: "Cache web" });
     const bad = await memory({ project: sibling, title: "Cache sibling" });
-    await writeFile(bad, "invalid YAML memory");
+    await writeFile(join(bad, NAMES.MEMORY_MD), "invalid YAML memory");
     const result = await search({ roots, repo: root, query: "cache", scope: ["apps/web"] });
     expect(result.map((entry) => entry.path)).toEqual([keep]);
   });
@@ -942,7 +958,10 @@ describe("search", () => {
 
   it("reports a legacy glob with its memory path so it can be corrected", async () => {
     const path = await memory({ title: "Cache legacy", scope: ["apps/web/auth"] });
-    await writeFile(path, (await readFile(path, "utf8")).replace("apps/web", "apps/*"));
+    await writeFile(
+      join(path, NAMES.MEMORY_MD),
+      (await readFile(join(path, NAMES.MEMORY_MD), "utf8")).replace("apps/web", "apps/*"),
+    );
     await expect(search({ roots, repo: root, query: "cache" })).rejects.toThrow(path);
   });
 
@@ -1031,18 +1050,18 @@ describe("search", () => {
     expect(await search({ roots, repo: root, query: "before" })).toHaveLength(1);
     expect(await search({ roots, repo: root, query: "before" })).toHaveLength(1);
     const header = await frontmatter(path);
-    await writeFile(path, `---\n${stringify(header)}---\n\nafter\n`);
+    await writeFile(join(path, NAMES.MEMORY_MD), `---\n${stringify(header)}---\n\nafter\n`);
     expect(await search({ roots, repo: root, query: "before" })).toHaveLength(0);
     expect(await search({ roots, repo: root, query: "after" })).toHaveLength(1);
     await config({ project: root, value: { frontmatter: { custom: { required: ["ticket"] } } } });
     expect(await search({ roots, repo: root, query: "after" })).toHaveLength(1);
-    await rm(dirname(path), { recursive: true });
+    await rm(path, { recursive: true });
     expect(await search({ roots, repo: root, query: "after" })).toEqual([]);
   });
 
   it("rejects malformed frontmatter and unsupported config versions", async () => {
     const path = await memory({ title: "Valid" });
-    await writeFile(path, "---\nid: x\ntitle: [broken\n---\nbody\n");
+    await writeFile(join(path, NAMES.MEMORY_MD), "---\nid: x\ntitle: [broken\n---\nbody\n");
     await expect(search({ roots, repo: root, query: "body" })).rejects.toThrow("Invalid YAML");
     await config({ project: root, value: { version: 2 } });
     await expect(search({ roots, repo: root, query: "body" })).rejects.toThrow("Invalid config");
@@ -1050,11 +1069,36 @@ describe("search", () => {
 });
 
 describe("delete", () => {
+  it("rejects a memory file path before deleting any directory in the batch", async () => {
+    const one = await memory({ title: "One" });
+    const two = await memory({ title: "Two" });
+    await expect(
+      deleteMemories({ roots, repo: root, paths: [one, join(two, NAMES.MEMORY_MD)] }),
+    ).rejects.toThrow("existing memory directory");
+    expect(existsSync(one)).toBe(true);
+    expect(existsSync(two)).toBe(true);
+  });
+
+  it("returns explicitly selected nested directories before their parents", async () => {
+    const parent = await memory({ title: "Parent" });
+    const child = await memory({ title: "Child" });
+    const nested = join(parent, "child");
+    await rename(child, nested);
+    await expect(deleteMemories({ roots, repo: root, paths: [parent] })).rejects.toThrow(
+      `Select nested memory explicitly before deleting its parent: ${nested}`,
+    );
+    expect(await deleteMemories({ roots, repo: root, paths: [parent, nested] })).toEqual([
+      nested,
+      parent,
+    ]);
+    expect(existsSync(parent)).toBe(false);
+  });
+
   it("rejects a memory.md symlink even when passed its parent folder", async () => {
     const path = await memory({ title: "Keep" });
     const folder = join(root, "alias");
     await mkdir(folder);
-    await symlink(path, join(folder, NAMES.MEMORY_MD));
+    await symlink(join(path, NAMES.MEMORY_MD), join(folder, NAMES.MEMORY_MD));
     await expect(deleteMemories({ roots, repo: root, paths: [folder] })).rejects.toThrow(
       "Symbolic links",
     );
@@ -1067,16 +1111,14 @@ describe("delete", () => {
     await deleteMemories({ roots, repo: root, paths: [path] });
     expect(existsSync(path)).toBe(false);
   });
-  it("deletes by file or folder path with attachments and leaves other memories alone", async () => {
+  it("deletes by directory path with attachments and leaves other memories alone", async () => {
     const one = await memory({ title: "One" });
     const two = await memory({ title: "Two" });
     const keep = await memory({ title: "Keep" });
-    await writeFile(join(dirname(one), "attachment.txt"), "attachment");
-    expect(
-      await deleteMemories({ roots, repo: root, paths: [one, dirname(two), one] }),
-    ).toHaveLength(2);
-    expect(existsSync(dirname(one))).toBe(false);
-    expect(existsSync(dirname(two))).toBe(false);
+    await writeFile(join(one, "attachment.txt"), "attachment");
+    expect(await deleteMemories({ roots, repo: root, paths: [one, two, one] })).toHaveLength(2);
+    expect(existsSync(one)).toBe(false);
+    expect(existsSync(two)).toBe(false);
     expect(existsSync(keep)).toBe(true);
   });
 
@@ -1110,15 +1152,15 @@ describe("delete", () => {
   it("refuses symlink paths and protects nested memories", async () => {
     const parent = await memory({ title: "Parent" });
     const nested = await memory({ title: "Nested", doNotDelete: true });
-    await rename(dirname(nested), join(dirname(parent), "nested"));
+    await rename(nested, join(parent, "nested"));
     await expect(deleteMemories({ roots, repo: root, paths: [parent] })).rejects.toThrow(
       "nested memory",
     );
     const link = join(root, "link");
-    await symlink(dirname(parent), link, "dir");
-    await expect(
-      deleteMemories({ roots, repo: root, paths: [join(link, NAMES.MEMORY_MD)] }),
-    ).rejects.toThrow("Symbolic links");
+    await symlink(parent, link, "dir");
+    await expect(deleteMemories({ roots, repo: root, paths: [link] })).rejects.toThrow(
+      "Symbolic links",
+    );
     expect(existsSync(parent)).toBe(true);
   });
 });
@@ -1126,7 +1168,7 @@ describe("delete", () => {
 describe("built CLI", () => {
   it("requires --path even when the legacy JSON contains a path", async () => {
     const path = await memory({ title: "Keep" });
-    const before = await readFile(path, "utf8");
+    const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
     const result = run({
       args: ["update", "--roots", root, "--repo", root],
       input: JSON.stringify({ path, body: "Changed" }),
@@ -1134,14 +1176,14 @@ describe("built CLI", () => {
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
     expect(JSON.parse(result.stderr).error).toContain("--path");
-    expect(await readFile(path, "utf8")).toBe(before);
+    expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
   });
 
   it.each(["insert", "update", "search"])(
     "reports a nonexistent scope as a JSON error for %s",
     async (command) => {
       const path = await memory({ project: web, title: "Keep" });
-      const before = await readFile(path, "utf8");
+      const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
       const flags =
         command === "update"
           ? ["--path", path]
@@ -1157,16 +1199,19 @@ describe("built CLI", () => {
       });
       expect(result.status).toBe(1);
       expect(result.stdout).toBe("");
-      expect(JSON.parse(result.stderr).error).toContain('Replace scope "bad/bad/bad"');
-      expect(await readFile(path, "utf8")).toBe(before);
+      expect(JSON.parse(result.stderr).error).toContain('Invalid scope: "bad/bad/bad"');
+      expect(JSON.parse(result.stderr).error).toContain(
+        "Use an existing repository-relative file or directory",
+      );
+      expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
       expect(existsSync(join(root, NAMES.MEMORIES))).toBe(false);
     },
   );
   it("reads an empty patch from a JSON file with a relative --path", async () => {
     const path = await memory({ title: "Repair" });
     const before = await frontmatter(path);
-    const wrong = join(dirname(dirname(path)), "wrong-folder");
-    await rename(dirname(path), wrong);
+    const wrong = join(dirname(path), "wrong-folder");
+    await rename(path, wrong);
     const input = join(root, "update.json");
     await writeFile(input, "{}");
     const result = run({
@@ -1196,7 +1241,7 @@ describe("built CLI", () => {
     "rejects update input with %s before writing",
     async (invalid) => {
       const path = await memory({ title: "Keep" });
-      const before = await readFile(path, "utf8");
+      const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
       const input =
         invalid === "id"
           ? { frontmatter: { id: (await frontmatter(path)).id } }
@@ -1210,7 +1255,7 @@ describe("built CLI", () => {
       expect(result.status).toBe(1);
       expect(result.stdout).toBe("");
       expect(JSON.parse(result.stderr).error).toContain("Invalid update input");
-      expect(await readFile(path, "utf8")).toBe(before);
+      expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
     },
   );
 
@@ -1391,7 +1436,7 @@ describe("built CLI", () => {
     });
     expect(created.status, created.stderr).toBe(0);
     const [path] = JSON.parse(created.stdout);
-    const before = await readFile(path, "utf8");
+    const before = await readFile(join(path, NAMES.MEMORY_MD), "utf8");
     const updated = run({
       args: ["update", ...args, "--path", path],
       input: JSON.stringify({
@@ -1403,7 +1448,7 @@ describe("built CLI", () => {
     expect(JSON.parse(updated.stderr).error).toBe(
       `You cannot edit this memory because doNotEdit is true: ${path}. Ask the user to edit it.`,
     );
-    expect(await readFile(path, "utf8")).toBe(before);
+    expect(await readFile(join(path, NAMES.MEMORY_MD), "utf8")).toBe(before);
   });
 
   it.each([
@@ -1580,8 +1625,10 @@ describe("built CLI", () => {
   it("lists only this increment's commands and exits successfully for help", () => {
     const result = run({ args: ["--help"] });
     expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Usage: mem-cli");
     expect(result.stdout).toContain("insert");
     expect(result.stdout).toContain("update");
+    expect(result.stdout).toContain("mcp");
     expect(result.stdout).not.toContain("upsert");
     expect(result.stdout).not.toContain("prune");
     expect(result.stdout).not.toContain("upvote");

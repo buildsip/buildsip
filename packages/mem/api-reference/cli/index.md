@@ -1,14 +1,16 @@
-# mem CLI
+# mem-cli CLI
 
-The `mem` CLI reads and writes Git-native memories.
+The `mem-cli` CLI reads and writes Git-native memories.
 
 Basic usage:
 
 ```bash filename="Terminal"
-mem [command] [options]
+mem-cli [command] [options]
 ```
 
-Running `mem` with no command prints help.
+Running `mem-cli` with no command prints help.
+
+Every invocation also refreshes [global MCP installation](../mcp/installation.md).
 
 Requires Node.js `>=22.5.0`.
 
@@ -24,6 +26,7 @@ Requires Node.js `>=22.5.0`.
 | Command | Description |
 | --- | --- |
 | [`init`](./init.md) | Initialize a Git root, then the nearest package. |
+| [`mcp`](./mcp.md) | Serve memory tools over stdio. |
 | [`search`](./search.md) | Search titles, frontmatter, directory tags, and bodies. |
 | [`insert`](./insert.md) | Create one memory from JSON. |
 | [`update`](./update.md) | Patch one existing memory from JSON. |
@@ -31,17 +34,17 @@ Requires Node.js `>=22.5.0`.
 
 ### `--roots`
 
-Required on every command except [`init`](./init.md). Workspace directories. Repeat the flag or pass multiple paths.
+Required on memory commands. [`init`](./init.md) and [`mcp`](./mcp.md) do not take this flag. Workspace directories. Repeat the flag or pass multiple paths.
 
 ```bash filename="Terminal"
-mem search --roots /workspace/app --roots /workspace/team --repo /workspace/app --query cache
+mem-cli search --roots /workspace/app --roots /workspace/team --repo /workspace/app --query cache
 ```
 
 Each path must be a directory. The CLI canonicalizes it with `realpath`. Duplicate roots are ignored.
 
 ### `--repo`
 
-Required on every command except [`init`](./init.md). Git root of the workspace project the agent is working on.
+Required on memory commands. Git root of the workspace project the agent is working on.
 
 `--repo` must be a directory, that Git root, and inside one of `--roots`. A package directory is rejected.
 
@@ -55,9 +58,9 @@ JSON must be one object with double-quoted keys. Comments and trailing commas ar
 
 ### Output
 
-Successful `search`, `insert`, `update`, and `delete` print JSON on stdout and nothing on stderr.
+Successful `search`, `insert`, `update`, and `delete` print JSON on stdout. MCP installation warnings, if any, are separate `{ "warning": "<instruction>" }` lines on stderr and do not fail the command.
 
-Failures print `{ "error": "<message>" }` on stderr, set exit code `1`, and print nothing on stdout. [`init`](./init.md) prints the same message through its interactive UI instead of JSON.
+Command failures print `{ "error": "<message>" }` on stderr, set exit code `1`, and print nothing on stdout. [`init`](./init.md) prints command errors through its interactive UI instead of JSON.
 
 Help and version do not use this error format.
 

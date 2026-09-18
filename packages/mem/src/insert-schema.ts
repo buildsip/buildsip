@@ -2,33 +2,27 @@ import { z } from "zod";
 import { frontmatterSchema } from "./frontmatter-schema";
 import { scopeSchema } from "./scope-schema";
 
-const scopeMessage =
-  'Expected a nonempty array of repository-relative file or directory paths, such as ["apps/web/auth"]. Use ["*"] only for memories that apply to the whole repository.';
-
 /** New memories need their content and scope; the command generates their stable ID. */
 export const insertSchema = z.strictObject(
   {
     body: z
       .string({ error: "Expected a nonempty string containing the Markdown body." })
-      .regex(/\S/, "Expected a nonempty string containing the Markdown body."),
-    frontmatter: z.looseObject(
-      {
-        ...frontmatterSchema.shape,
-        id: z
-          .never({ error: "Omit id. Insert generates it; update preserves the stored ID." })
-          .optional(),
-        scope: z.array(scopeSchema, { error: scopeMessage }).min(1, scopeMessage),
-      },
-      {
-        error:
-          'Expected an object with title (a nonempty string) and scope (a nonempty array, such as ["apps/web/auth"] or ["*"]). Optional fields: doNotEdit, doNotDelete, and configured custom fields. Omit id; it is generated automatically.',
-      },
-    ),
+      .min(1, "Expected a nonempty string containing the Markdown body.")
+      .regex(/\S/, "Expected a nonempty string containing the Markdown body.")
+      .describe("Markdown content for the memory."),
+    frontmatter: frontmatterSchema
+      .extend({ scope: scopeSchema })
+      // Custom fields are allowed, but caller IDs must not pass through as custom metadata.
+      .refine((value) => !Object.hasOwn(value, "id"), {
+        path: ["id"],
+        message: "Omit id. Update preserves the stored ID.",
+      })
+      .describe(frontmatterSchema.description!),
   },
   {
     error: (issue) =>
       issue.code === "unrecognized_keys"
-        ? "Remove this unknown field. Only body and frontmatter are allowed at the top level. Put title, scope, protection flags, and configured custom fields inside frontmatter; omit id and pass workspace paths via --roots and --repo."
+        ? "Remove this unknown field. Only body and frontmatter are allowed at the top level. Put title, scope, protection flags, and configured custom fields inside frontmatter; pass workspace paths via --roots and --repo."
         : 'Expected one JSON object: {"body":"Markdown content","frontmatter":{"title":"Memory title","scope":["apps/web/auth"]}}. Use ["*"] only for memories that apply to the whole repo.',
   },
 );

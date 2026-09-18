@@ -1,13 +1,13 @@
-# mem insert
+# mem-cli insert
 
-`mem insert` creates one memory from a JSON object. Search for a related memory before inserting.
+`mem-cli insert` creates one memory from a JSON object. Search for a related memory before inserting.
 
 ```bash filename="Terminal"
-mem insert --roots /repo --repo /repo --input memory.json
+mem-cli insert --roots /repo --repo /repo --input memory.json
 ```
 
 ```bash filename="Terminal"
-mem insert --roots /repo --repo /repo <<'EOF'
+mem-cli insert --roots /repo --repo /repo <<'EOF'
 {
   "body": "Retry the client once after a reconnect; do not stack interceptors.",
   "frontmatter": {
@@ -18,9 +18,9 @@ mem insert --roots /repo --repo /repo <<'EOF'
 EOF
 ```
 
-Stdout is a one-element JSON array of the saved absolute `memory.md` path. Use that path for later [`update`](./update.md) and [`delete`](./delete.md) calls.
+Stdout is a one-element JSON array of the saved absolute memory directory path. Use that path for later [`update`](./update.md) and [`delete`](./delete.md) calls.
 
-> Good to know: Pass the narrowest [scope](../memory/scope.md) that covers the memory. Use `["*"]` only for the whole repository.
+> Good to know: Choose the narrowest [scope](../memory/scope.md) where the memory provides useful context. For example, a login-session cookie rule used throughout authentication belongs to `["apps/web/auth"]`. Use `["*"]` only for context useful across the whole repository.
 
 ## Reference
 

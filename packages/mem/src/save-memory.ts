@@ -59,7 +59,7 @@ export async function saveMemory({
   // Allow repairing its spelling, while refusing a genuinely different destination.
   if (destination && (!existing || (await realpath(folder)) !== dirname(existing.path))) {
     throw new Error(
-      `A memory folder already exists: ${folder}. Use update with its ${NAMES.MEMORY_MD} path to edit that memory, or choose another title.`,
+      `A memory folder already exists: ${folder}. Use update with this directory path to edit that memory, or choose another title.`,
     );
   }
   await mkdir(parent, { recursive: true });
@@ -93,5 +93,5 @@ export async function saveMemory({
   } finally {
     await rm(stage, { recursive: true, force: true });
   }
-  return [path];
+  return [folder];
 }

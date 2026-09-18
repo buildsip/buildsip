@@ -1,7 +1,7 @@
 import { assertNoSymlinks, findUp, readTextIfExistsSync } from "@buildsip/file-utils";
 import type { Command } from "commander";
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { confirm, group, intro, isCancel, log, outro } from "@clack/prompts";
 import { applyEdits, findNodeAtLocation, modify, parseTree, type ParseError } from "jsonc-parser";
 import { findRepo } from "../find-repo";
@@ -38,9 +38,8 @@ export async function init({
   // Memories can exist before init runs. Only a root config counts as completed repo setup.
   const repoConfig = await readConfig({ project: root, repo: root });
   const project = repoConfig.source === undefined ? root : nearest;
-  const manifest = join(project, NAMES.PACKAGE_JSON);
-  const pkg = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")) : {};
-  const name = typeof pkg.name === "string" && pkg.name.trim() ? pkg.name : basename(project);
+  // Setup messages use the CLI package's name, regardless of the project being configured.
+  const { name } = JSON.parse(readFileSync(join(cliRoot, NAMES.PACKAGE_JSON), "utf8"));
   const memories = join(project, NAMES.MEMORIES);
   const configPath = join(memories, NAMES.CONFIG_JSON);
   await assertNoSymlinks({ path: configPath, base: root });
@@ -49,10 +48,10 @@ export async function init({
   const { config, local, source } =
     project === root ? repoConfig : await readConfig({ project, repo: root });
 
-  intro("mem init");
+  intro("mem-cli init");
   if (project !== nearest) {
     log.info(
-      `First-time setup: initializing the repository at ${root}. Run mem init again from this package to configure it.`,
+      `First-time setup: initializing the repository at ${root}. Run mem-cli init again from this package to configure it.`,
     );
   }
   if (source !== undefined) {
@@ -60,7 +59,7 @@ export async function init({
       message: `${name} is already initialized. Reconfigure its settings?`,
       initialValue: false,
     });
-    if (isCancel(update)) throw new Error("mem init cancelled.");
+    if (isCancel(update)) throw new Error("mem-cli init cancelled.");
     if (!update) {
       outro(`${name} unchanged.`);
       return;
@@ -84,7 +83,7 @@ export async function init({
     },
     {
       onCancel: () => {
-        throw new Error("mem init cancelled.");
+        throw new Error("mem-cli init cancelled.");
       },
     },
   );

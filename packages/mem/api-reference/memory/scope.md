@@ -8,7 +8,7 @@ scope:
   - apps/web/src/constants.ts
 ```
 
-On [`insert`](../cli/insert.md), `scope` is a nonempty array. On [`update`](../cli/update.md), supplying it recomputes placement; omitting it leaves the current store.
+When present, `scope` is an array with at least one path, including in stored YAML. A single path still uses an array. It is required on [`insert`](../cli/insert.md). On [`update`](../cli/update.md), supplying it recomputes placement; omitting it leaves the current store.
 
 ## Paths
 

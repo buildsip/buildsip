@@ -6,14 +6,14 @@
   "license": "UNLICENSED",
   "type": "module",
   "bin": {
-    "mem": "./dist/index.js"
+    "mem-cli": "./dist/index.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "mem": "pnpm build && node ./dist/index.js",
+    "mem-cli": "pnpm build && node ./dist/index.js",
     "format": "oxfmt --write src scripts",
     "test": "pnpm build && vitest run",
     "typecheck": "tsc --noEmit"
@@ -23,6 +23,8 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "add-mcp": "^2.4.0",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "commander": "^14.0.3",

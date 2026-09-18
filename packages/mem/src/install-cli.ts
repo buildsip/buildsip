@@ -63,7 +63,7 @@ export async function installCli(
     installedPath && existsSync(installedPath)
       ? JSON.parse(readFileSync(installedPath, "utf8"))
       : undefined;
-  if (installed && (!valid(installed.version) || !installed.bin?.mem))
+  if (installed && (!valid(installed.version) || !installed.bin?.["mem-cli"]))
     throw new Error(
       `The global ${cli.name} package is not this CLI. Resolve that package name conflict before initializing.`,
     );
@@ -96,7 +96,7 @@ export async function installCli(
       message: `Upgrade ${cli.name} from ${installed?.version ?? version} to ${latest}?`,
       initialValue: true,
     });
-    if (isCancel(upgrade)) throw new Error("mem init cancelled.");
+    if (isCancel(upgrade)) throw new Error("mem-cli init cancelled.");
     if (upgrade) {
       version = latest;
       install = true;

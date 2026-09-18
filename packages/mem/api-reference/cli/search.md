@@ -1,17 +1,19 @@
-# mem search
+# mem-cli search
 
-`mem search` ranks memories by title, frontmatter, directory tags, and Markdown body.
+`mem-cli search` ranks memories by title, frontmatter, directory tags, and Markdown body.
 
 ```bash filename="Terminal"
-mem search --roots /repo --repo /repo --query "axios retry"
+mem-cli search --roots /repo --repo /repo --query "axios retry"
 ```
 
 Stdout is a JSON array. No matches print `[]`.
 
+Returned paths are absolute memory directories and can be passed to [`update`](./update.md) or [`delete`](./delete.md).
+
 ```json
 [
   {
-    "path": "/repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect/memory.md",
+    "path": "/repo/apps/web/.memories/data/axios-retry-duplication-after-reconnect",
     "score": 3.2,
     "frontmatter": {
       "id": "11111111-1111-4111-8111-111111111111",
@@ -64,19 +66,19 @@ Search validates each store's config and built-in memory fields. Custom fields r
 ### Paginate
 
 ```bash filename="Terminal"
-mem search --roots /repo --repo /repo --query cache --limit 1 --offset 1
+mem-cli search --roots /repo --repo /repo --query cache --limit 1 --offset 1
 ```
 
 ### Limit to a tree
 
 ```bash filename="Terminal"
-mem search --roots /repo --repo /repo --query cache --scope apps/web
+mem-cli search --roots /repo --repo /repo --query cache --scope apps/web
 ```
 
 ### Several areas
 
 ```bash filename="Terminal"
-mem search --roots /repo --repo /repo --query cache --scope apps/web --scope apps/api
+mem-cli search --roots /repo --repo /repo --query cache --scope apps/web --scope apps/api
 ```
 
 Hits are unioned, not duplicated.
@@ -84,7 +86,7 @@ Hits are unioned, not duplicated.
 ### Shared workspace repo
 
 ```bash filename="Terminal"
-mem search --roots /repo --roots /team --repo /repo --query cache --scope apps/web
+mem-cli search --roots /repo --roots /team --repo /repo --query cache --scope apps/web
 ```
 
 ## Related

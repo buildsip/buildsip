@@ -1,32 +1,23 @@
 import { z } from "zod";
-import { scopeSchema } from "./scope-schema";
 
-/** Built-in fields are shared by stored YAML and memory command inputs; Ajv validates extra fields later. */
+/** Shared editable metadata; each caller adds its own scope and ID requirements. */
 export const frontmatterSchema = z.looseObject(
   {
-    id: z
-      .string({ error: "Expected a nonempty string identifying the memory." })
-      .regex(/\S/, "Expected a nonempty string identifying the memory."),
     title: z
       .string({ error: "Expected a nonempty string for the memory title." })
-      .regex(/\S/, "Expected a nonempty string for the memory title."),
-    scope: z
-      .union([
-        scopeSchema,
-        z
-          .array(scopeSchema)
-          .min(1, 'Expected at least one scope path; use ["*"] for the whole repo.'),
-      ])
-      .optional(),
+      .min(1, "Expected a nonempty string for the memory title.")
+      .regex(/\S/, "Expected a nonempty string for the memory title.")
+      .describe("Memory title. The memory directory is named from this title."),
     doNotEdit: z
-      .boolean({ error: "Expected a boolean: true or false; omit to keep the current value." })
-      .optional(),
+      .boolean({ error: "Expected a boolean: true or false." })
+      .optional()
+      .describe("When true, agents cannot edit this memory."),
     doNotDelete: z
-      .boolean({ error: "Expected a boolean: true or false; omit to keep the current value." })
-      .optional(),
+      .boolean({ error: "Expected a boolean: true or false." })
+      .optional()
+      .describe("When true, agents cannot delete this memory."),
   },
   {
-    error:
-      "Expected a frontmatter object containing id and title, with optional scope and protection flags.",
+    error: "Expected an object containing memory metadata, such as title and protection flags.",
   },
 );
