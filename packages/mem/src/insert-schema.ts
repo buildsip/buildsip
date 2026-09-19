@@ -16,8 +16,7 @@ export const insertSchema = z.strictObject(
       .refine((value) => !Object.hasOwn(value, "id"), {
         path: ["id"],
         message: "Omit id. Update preserves the stored ID.",
-      })
-      .describe(frontmatterSchema.description!),
+      }),
   },
   {
     error: (issue) =>

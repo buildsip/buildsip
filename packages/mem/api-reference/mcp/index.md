@@ -48,6 +48,8 @@ Success returns the same JSON as the corresponding CLI command in the first text
 
 The server stays available after tool errors. Its initialize response reports the running package version.
 
+After either write tool returns, the agent may add attachments beside `memory.md` in the returned directory when useful. Attachments are supporting files, such as images or long documents, and are not searchable. The success response includes this guidance.
+
 ### Categorization guidance
 
 After an insert or update, the second text block identifies the saved memory directory and its owning `.memories/data` directory. The agent may move the whole memory directory within that exact data directory and create parent category folders. It must keep the memory folder's name and contents together, avoid other memory directories and symbolic links, and use the new path for later calls.

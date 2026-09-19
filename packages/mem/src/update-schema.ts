@@ -14,8 +14,7 @@ export const updateSchema = z.strictObject(
         path: ["id"],
         message: "Omit id. Insert generates it; update preserves the stored ID.",
       })
-      .optional()
-      .describe(frontmatterSchema.description!),
+      .optional(),
   },
   {
     error: (issue) =>

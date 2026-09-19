@@ -32,10 +32,10 @@ it("shows only data/ when no category folders exist", async () => {
   const result = await describeMemory({ path, repo });
   expect(result).toContain(`anywhere within ${JSON.stringify(data)}`);
   expect(result).toContain("Never move it outside this exact data directory");
-  expect(result).toContain("create new parent category folders");
+  expect(result).toContain("create new parent directories");
   expect(result).toContain("act as tags when searching memories");
   expect(result).toContain("human-readable names");
-  expect(result.split("omitted):\n")[1]).toBe("data/");
+  expect(result.split("looks like this:\n")[1]).toBe("data/");
 });
 
 it("lists empty categories but prunes memories, attachments, stages, and symbolic links", async () => {
@@ -52,7 +52,7 @@ it("lists empty categories but prunes memories, attachments, stages, and symboli
   await symlink(repo, join(data, "linked-directory"));
   await symlink(join(repo, "missing"), join(data, "broken-link"));
   const result = await describeMemory({ path, repo });
-  expect(result.split("omitted):\n")[1]).toBe(
+  expect(result.split("looks like this:\n")[1]).toBe(
     "data/\ndata/network/\ndata/network/http/\ndata/rendering/\ndata/rendering/hydration/\ndata/state/\ndata/state/zustand/\ndata/state/zustand/selectors/",
   );
   // We may inspect a memory's entries to recognize it, but never descend into its attachments.
@@ -79,7 +79,7 @@ it.each([".memories", ".memories/data"])(
     await writeFile(join(memory, "memory.md"), "Note");
     const result = await describeMemory({ path: memory, repo: root });
     expect(result).toContain(`anywhere within ${JSON.stringify(store)}`);
-    expect(result.split("omitted):\n")[1]).toBe("data/");
+    expect(result.split("looks like this:\n")[1]).toBe("data/");
   },
 );
 
@@ -87,7 +87,7 @@ it("reports an unavailable listing without turning a successful save into a fail
   vi.mocked(readdir).mockRejectedValueOnce(new Error("Permission denied"));
   const result = await describeMemory({ path, repo });
   expect(result).toContain(`Memory saved at ${JSON.stringify(path)}`);
-  expect(result).toContain("The category listing could not be read");
+  expect(result).toContain("The data directory listing could not be read");
   expect(result).toContain("the memory was saved successfully");
-  expect(result).not.toContain("Current category directories");
+  expect(result).not.toContain("looks like this:");
 });
