@@ -1,6 +1,6 @@
 ---
 name: buildsip-note
-description: Create a work note.
+description: Create and publish an implementation note.
 ---
 
 1. Run `pnpm buildsip prepare` (defaults to the last 7 days). For a different window, use `--hours <hours>`, `--days <days>`, `--since <iso>`, or `--until <iso>`. Keep the JSON result because it contains `temp`, `tempDir`, `tempLogsDir`, and `until`.
