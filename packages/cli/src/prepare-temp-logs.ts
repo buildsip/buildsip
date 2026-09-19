@@ -6,7 +6,7 @@ import {
   type AgentChatParserContext,
   type Message,
   type UnifiedSession,
-} from "@buildsip/agent-chat-parser";
+} from "agent-chat-parser";
 import { findAliases, readConfig } from "./alias";
 import { buildSipStoreFromRoot } from "./build-sip-store";
 import { findGitProjectRoot, findProjectRoot } from "./find-project-root";
