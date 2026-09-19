@@ -3,17 +3,17 @@ import { join, resolve, sep } from "node:path";
 import {
   listSessions,
   parseSession,
-  type AgentChatParserContext,
+  type AgentSessionParserContext,
   type Message,
   type UnifiedSession,
-} from "agent-chat-parser";
+} from "@buildsip/agent-session-parser";
 import { findAliases, readConfig } from "./alias";
 import { buildSipStoreFromRoot } from "./build-sip-store";
 import { findGitProjectRoot, findProjectRoot } from "./find-project-root";
 import { makeTempFolder } from "./make-temp-folder";
 import { findTimeWindow, PrepareTempLogsOptions } from "./find-time-window";
 
-export type PrepareTempLogsContext = AgentChatParserContext;
+export type PrepareTempLogsContext = AgentSessionParserContext;
 
 export type PrepareTempLogsResult = {
   buildsipSessionsRead: number;
