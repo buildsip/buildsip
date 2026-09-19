@@ -90,7 +90,9 @@ describe("MCP stdio server", () => {
     for (const tool of tools) {
       expect(tool.inputSchema.required).toEqual(expect.arrayContaining(["roots", "repo"]));
       expect(tool.inputSchema.additionalProperties).toBe(false);
-      for (const field of Object.values(tool.inputSchema.properties ?? {})) {
+      for (const [name, field] of Object.entries(tool.inputSchema.properties ?? {})) {
+        // Frontmatter's individual fields describe its contents below.
+        if (name === "frontmatter") continue;
         expect(field).toHaveProperty("description", expect.any(String));
       }
     }

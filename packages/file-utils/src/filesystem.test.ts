@@ -39,12 +39,12 @@ describe.each([
     await writeFile(file, "hello");
     const path = join(file, "package.json");
     await expect(inspect({ path })).rejects.toMatchObject({ code: "ENOTDIR" });
-    expect(await inspect({ path, treatFileAncestorAsMissing: true })).toBeUndefined();
+    expect(await inspect({ path, ignoreNotDirectory: true })).toBeUndefined();
   });
 
   it("does not hide invalid-path errors", async () => {
     await expect(
-      inspect({ path: "bad\0path", treatFileAncestorAsMissing: true }),
+      inspect({ path: "bad\0path", ignoreNotDirectory: true }),
     ).rejects.toMatchObject({
       code: "ERR_INVALID_ARG_VALUE",
     });
@@ -137,7 +137,7 @@ it("finds a package from a file or missing path without matching above the selec
   await writeFile(file, "");
   const test = async (path: string) =>
     (
-      await statIfExists({ path: join(path, "package.json"), treatFileAncestorAsMissing: true })
+      await statIfExists({ path: join(path, "package.json"), ignoreNotDirectory: true })
     )?.isFile() === true;
   for (const path of [file, join(source, "missing", "file.ts")]) {
     expect(await findUp({ path, root: project, test })).toBe(project);
