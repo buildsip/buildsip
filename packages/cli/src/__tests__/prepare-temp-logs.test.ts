@@ -74,7 +74,7 @@ describe("prepareTempLogs", () => {
     vi.doMock("@buildsip/cli-auth", () => ({
       findBuildSipHomeDir: () => homeDir,
     }));
-    vi.doMock("agent-chat-parser", () => ({
+    vi.doMock("@buildsip/agent-session-parser", () => ({
       listSessions,
       parseSession: vi.fn(),
     }));
@@ -179,7 +179,7 @@ describe("prepareTempLogs", () => {
     vi.doMock("@buildsip/cli-auth", () => ({
       findBuildSipHomeDir: () => homeDir,
     }));
-    vi.doMock("agent-chat-parser", () => ({ listSessions, parseSession }));
+    vi.doMock("@buildsip/agent-session-parser", () => ({ listSessions, parseSession }));
 
     const { prepareTempLogs } = await import("../prepare-temp-logs");
     const result = await prepareTempLogs(

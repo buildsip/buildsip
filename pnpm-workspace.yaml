@@ -15,4 +15,4 @@ trustPolicy: no-downgrade
 
 # Allow our separately released parser without a seven-day delay.
 minimumReleaseAgeExclude:
-  - agent-chat-parser
+  - "@buildsip/agent-session-parser"

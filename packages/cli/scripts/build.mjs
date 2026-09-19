@@ -17,7 +17,7 @@ await build({
   format: "esm",
   outfile: join(distDir, "index.js"),
   external: [
-    "agent-chat-parser",
+    "@buildsip/agent-session-parser",
     "@better-fetch/fetch",
     "@clack/prompts",
     "commander",
