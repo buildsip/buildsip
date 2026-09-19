@@ -129,7 +129,7 @@ describe("MCP stdio server", () => {
     expect(instructions(created)).toContain(
       `anywhere within ${JSON.stringify(join(repo, ".memories/data"))}`,
     );
-    expect(instructions(created).split("omitted):\n")[1]).toBe("data/");
+    expect(instructions(created).split("looks like this:\n")[1]).toBe("data/");
     const file = join(path, "memory.md");
     const before = await readFile(file, "utf8");
     for (const name of ["update-memory", "delete-memories"]) {
@@ -193,7 +193,7 @@ describe("MCP stdio server", () => {
     });
     const listing =
       "data/\ndata/network/\ndata/network/http/\ndata/rendering/\ndata/rendering/hydration/\ndata/state/\ndata/state/zustand/\ndata/state/zustand/selectors/";
-    expect(instructions(created).split("omitted):\n")[1]).toBe(listing);
+    expect(instructions(created).split("looks like this:\n")[1]).toBe(listing);
     const [path] = JSON.parse(text(created));
     await mkdir(join(path, "attachments"));
     await writeFile(join(path, "attachments", "trace.txt"), "Keep with the memory");
@@ -201,7 +201,7 @@ describe("MCP stdio server", () => {
     await rename(path, moved);
     const updated = await call({ name: "update-memory", args: { path: moved } });
     expect(JSON.parse(text(updated))).toEqual([moved]);
-    expect(instructions(updated).split("omitted):\n")[1]).toBe(listing);
+    expect(instructions(updated).split("looks like this:\n")[1]).toBe(listing);
     expect(await readFile(join(moved, "attachments", "trace.txt"), "utf8")).toBe(
       "Keep with the memory",
     );

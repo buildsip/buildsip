@@ -3,9 +3,10 @@ import { readdir, realpath } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { NAMES } from "./names";
 
-/** Adds categorization guidance after a successful write, using the saved location. */
+/** Adds attachment and categorization guidance after a successful write, using the saved location. */
 export async function describeMemory({ path, repo }: { path: string; repo: string }) {
-  const saved = `Memory saved at ${JSON.stringify(path)}.`;
+  const saved = `Memory saved at ${JSON.stringify(path)}.
+You may now add attachments beside ${NAMES.MEMORY_MD} in this directory when useful. Attachments are supporting files, such as images or long documents, and are not searchable.`;
   let data: string | undefined;
   try {
     // Start at the repo so a category named .memories/data cannot replace the store boundary.

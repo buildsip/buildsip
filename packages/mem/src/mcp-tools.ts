@@ -85,14 +85,14 @@ function tool<T, R>({
 export const mcpTools = [
   tool({
     name: "insert-memory",
-    description: `Create one memory. Extra frontmatter keys must match frontmatter.custom in the repo-root ${NAMES.MEMORIES}/${NAMES.CONFIG_JSON}. No frontmatter.custom means no extra keys. Call search-memories first; if a related memory can be improved, use update-memory instead. Choose the narrowest scope where the memory provides useful context. For example, a login-session cookie rule used throughout authentication belongs to ["apps/web/auth"]. Use ["*"] only for context useful across the whole repository. Keep the returned path for later edits.`,
+    description: `Create one memory. Extra frontmatter keys must match frontmatter.custom in the repo-root ${NAMES.MEMORIES}/${NAMES.CONFIG_JSON}. No frontmatter.custom means no extra keys. Call search-memories first; if a related memory can be improved, use update-memory instead. Choose the narrowest scope where the memory provides useful context. For example, a login-session cookie rule used throughout authentication belongs to ["apps/web/auth"]. Use ["*"] only for context useful across the whole repository. Keep the returned path for later edits. After this tool returns, you may add attachments beside ${NAMES.MEMORY_MD} in the returned directory when useful. Attachments are supporting files, such as images or long documents, and are not searchable.`,
     schema: z.strictObject({ ...workspace, ...insertSchema.shape }, { error: inputError }),
     run: insert,
     instructions: ({ result, input }) => describeMemory({ path: result[0]!, repo: input.repo }),
   }),
   tool({
     name: "update-memory",
-    description: `Patch an existing memory. Extra frontmatter keys must match frontmatter.custom in the repo-root ${NAMES.MEMORIES}/${NAMES.CONFIG_JSON}. No frontmatter.custom means no extra keys. Omitted fields keep their values. A scope or title change can move the memory; use the returned path for subsequent calls. Every update repairs the title folder to match the memory's frontmatter title. If doNotEdit blocks the update, ask the user to edit the memory.`,
+    description: `Patch an existing memory. Extra frontmatter keys must match frontmatter.custom in the repo-root ${NAMES.MEMORIES}/${NAMES.CONFIG_JSON}. No frontmatter.custom means no extra keys. Omitted fields keep their values. A scope or title change can move the memory; use the returned path for subsequent calls. Every update repairs the title folder to match the memory's frontmatter title. If doNotEdit blocks the update, ask the user to edit the memory. After this tool returns, you may add attachments beside ${NAMES.MEMORY_MD} in the returned directory when useful. Attachments are supporting files, such as images or long documents, and are not searchable.`,
     schema: z.strictObject(
       { ...workspace, path: memoryPath, ...updateSchema.shape },
       { error: inputError },
