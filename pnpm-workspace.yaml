@@ -12,3 +12,7 @@ allowBuilds:
 
 minimumReleaseAge: 10080 # 7 days
 trustPolicy: no-downgrade
+
+# Allow our separately released parser without a seven-day delay.
+minimumReleaseAgeExclude:
+  - agent-chat-parser
